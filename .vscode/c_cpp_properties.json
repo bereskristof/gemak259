@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "true=1",
+                "false=0"
+            ],
+            "intelliSenseMode": "windows-gcc-x64",
+            "cStandard": "c23"
+        }
+    ],
+    "version": 4
+}
