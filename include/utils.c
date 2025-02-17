@@ -1,6 +1,7 @@
 #include "utils.h"
 
 // Loads the contents of the text file at `filePath` into `textBuffer`.
+// Known issues: Failes if the target file is empty
 enum UtilErr LoadTextFile(char* const textBuffer, const size_t textBufferSize, const char filePath[]) {
     FILE* const file = fopen(filePath, "r");
     if (file == NULL)
