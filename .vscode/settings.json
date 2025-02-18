@@ -1,6 +1,9 @@
 {
     "files.associations": {
-        "utils.h": "c"
+        "utils.h": "c",
+        "cl.h": "c",
+        "cmath": "c",
+        "stdarg.h": "c"
     },
     "editor.formatOnSave": true,
 }

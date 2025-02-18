@@ -1,5 +1,5 @@
 MAKE := make
-PATHS := include/ week01/task02/
+PATHS := include/ week01/task02/ week01/task04/
 MAKE_TARGET = windows
 
 .PHONY: default all-windows all-unix all-clean
