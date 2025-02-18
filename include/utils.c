@@ -127,6 +127,7 @@ enum UtilErr LoadClProgram(cl_program* program, const char fPath[], const cl_dev
         logMessage[logSize] = '\0';
         fprintf(stderr, "OpenCL build log:\n");
         fprintf(stderr, logMessage);
+        free(logMessage);
         return UERR_CL_BUILD_PROGRAM_FAILED;
     }
     return UERR_NONE;
