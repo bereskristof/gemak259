@@ -9,5 +9,5 @@ $ pacman -S base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-make mingw-w6
 ## MinGW-64 Compiling
 
 ```
-.../gemak-259$ make all-windows
+.../gemak-259$ make
 ```
