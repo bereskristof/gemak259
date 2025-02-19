@@ -16,6 +16,15 @@ extern struct GlobalUtilConf {
     size_t loadClProgramMaxCharCount;  // Maximum size of .cl file
 } globalUtilConf;
 
+struct ClProgramContainer {
+    cl_platform_id platform;
+    cl_device_id device;
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_kernel kernels[5];
+};
+
 enum UtilErr {
     UERR_NONE = 0,
     UERR_FILE_IO_FAILED,

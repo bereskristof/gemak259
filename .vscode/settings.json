@@ -3,7 +3,8 @@
         "utils.h": "c",
         "cl.h": "c",
         "cmath": "c",
-        "stdarg.h": "c"
+        "stdarg.h": "c",
+        "limits": "c"
     },
     "editor.formatOnSave": true,
 }

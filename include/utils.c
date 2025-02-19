@@ -3,7 +3,7 @@
 static void PrintClPlatforms(const size_t count, cl_platform_id ids[]);
 static void PrintClDevices(const size_t count, cl_device_id ids[]);
 
-struct GlobalUtilConf globalUtilConf = (struct GlobalUtilConf){
+struct GlobalUtilConf globalUtilConf = {
     .initClPrintLog = false,
     .loadClProgramMaxCharCount = 4096,
 };
