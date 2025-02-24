@@ -26,22 +26,23 @@ int main(void) {
     printf("CPU maximum: %d@%d (unique=%s)\n", cpuMax, maxIndex, isMaxUnique ? "Y" : "N");
 
     enum UtilErr utilReturn;
-    struct ClProgramContainer cl;
+    struct ClContainer cl;
 
     // Sets up OpenCL
     cl_int clReturn;
+    cl_kernel kernelMin, kernelMax;
     utilReturn = InitCl(&cl.platform, &cl.device, &cl.context, &cl.queue);
     if (utilReturn != UERR_NONE)
         return utilReturn;
     utilReturn = LoadClProgram(&cl.program, "./minmax.cl", &cl.device, &cl.context);
     if (utilReturn != UERR_NONE)
         return utilReturn;
-    cl.kernels[0] = clCreateKernel(cl.program, "GetArrayMin", &clReturn);
+    kernelMin = clCreateKernel(cl.program, "GetArrayMin", &clReturn);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Creating GetArrayMin kernel failed (%d)", clReturn);
         return clReturn;
     }
-    cl.kernels[1] = clCreateKernel(cl.program, "GetArrayMax", &clReturn);
+    kernelMax = clCreateKernel(cl.program, "GetArrayMax", &clReturn);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Creating GetArrayMax kernel failed (%d)", clReturn);
         return clReturn;
@@ -58,17 +59,17 @@ int main(void) {
         PrintErr("Creating device array failed [min] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[0], 0, sizeof(deviceArrayMin), (void*)&deviceArrayMin);
+    clReturn = clSetKernelArg(kernelMin, 0, sizeof(deviceArrayMin), (void*)&deviceArrayMin);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 0 failed [min] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[0], 1, sizeof(int), (void*)&arraySize);
+    clReturn = clSetKernelArg(kernelMin, 1, sizeof(int), (void*)&arraySize);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 1 failed [min] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[0], 2, sizeof(int), (void*)&localWorkInt);
+    clReturn = clSetKernelArg(kernelMin, 2, sizeof(int), (void*)&localWorkInt);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 2 failed [min] (%d)", clReturn);
         return clReturn;
@@ -85,17 +86,17 @@ int main(void) {
         PrintErr("Creating device array failed [max] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[1], 0, sizeof(deviceArrayMax), (void*)&deviceArrayMax);
+    clReturn = clSetKernelArg(kernelMax, 0, sizeof(deviceArrayMax), (void*)&deviceArrayMax);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 0 failed [max] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[1], 1, sizeof(int), (void*)&arraySize);
+    clReturn = clSetKernelArg(kernelMax, 1, sizeof(int), (void*)&arraySize);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 1 failed [max] (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clSetKernelArg(cl.kernels[1], 2, sizeof(int), (void*)&localWorkInt);
+    clReturn = clSetKernelArg(kernelMax, 2, sizeof(int), (void*)&localWorkInt);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Setting up kernel argument 2 failed [max] (%d)", clReturn);
         return clReturn;
@@ -107,12 +108,12 @@ int main(void) {
     }
 
     // Runs kernels
-    clReturn = clEnqueueNDRangeKernel(cl.queue, cl.kernels[0], 1, NULL, &globalWork, &localWorkSize, 0, NULL, NULL);
+    clReturn = clEnqueueNDRangeKernel(cl.queue, kernelMin, 1, NULL, &globalWork, &localWorkSize, 0, NULL, NULL);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Failed to run kernel 0 (%d)", clReturn);
         return clReturn;
     }
-    clReturn = clEnqueueNDRangeKernel(cl.queue, cl.kernels[1], 1, NULL, &globalWork, &localWorkSize, 0, NULL, NULL);
+    clReturn = clEnqueueNDRangeKernel(cl.queue, kernelMax, 1, NULL, &globalWork, &localWorkSize, 0, NULL, NULL);
     if (clReturn != CL_SUCCESS) {
         PrintErr("Failed to run kernel 1 (%d)", clReturn);
         return clReturn;
@@ -134,8 +135,8 @@ int main(void) {
     printf("GPU minimum: %d\n", gpuMin);
     printf("GPU maximum: %d\n", gpuMax);
 
-    clReleaseKernel(cl.kernels[1]);
-    clReleaseKernel(cl.kernels[0]);
+    clReleaseKernel(kernelMax);
+    clReleaseKernel(kernelMin);
     clReleaseProgram(cl.program);
     clReleaseContext(cl.context);
     clReleaseDevice(cl.device);

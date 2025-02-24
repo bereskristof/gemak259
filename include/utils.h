@@ -16,13 +16,13 @@ extern struct GlobalUtilConf {
     size_t loadClProgramMaxCharCount;  // Maximum size of .cl file
 } globalUtilConf;
 
-struct ClProgramContainer {
+struct ClContainer {
     cl_platform_id platform;
     cl_device_id device;
     cl_context context;
     cl_command_queue queue;
     cl_program program;
-    cl_kernel kernels[5];
+    cl_kernel kernel;
 };
 
 enum UtilErr {
@@ -37,9 +37,16 @@ enum UtilErr {
     UERR_CL_BUILD_PROGRAM_FAILED,
 };
 
-void PrintErr(const char errorMsg[], ...);
+// OpenCL Wrappers
 enum UtilErr LoadTextFile(char* const textBuffer, const size_t textBufferSize, const char filePath[]);
 enum UtilErr InitCl(cl_platform_id* platformId, cl_device_id* deviceId, cl_context* context, cl_command_queue* queue);
 enum UtilErr LoadClProgram(cl_program* program, const char fPath[], const cl_device_id* id, const cl_context* context);
+enum UtilErr InitClContainer(struct ClContainer const* container);
+enum UtilErr LoadClContainerProgram(struct ClContainer const* container, const char filePath[]);
+void FreeClContainer(struct ClContainer const* container);
+
+// Error handling
+void PrintErr(const char errorMsg[], ...);
+void PrintClErr(const char errorMsg[], const cl_int errorCode);
 
 #endif  // UTILS_C
