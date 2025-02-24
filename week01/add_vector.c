@@ -57,7 +57,7 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
 
     // Calculation & data return
     const size_t totalSize = THREADS_COUNT;
-    const size_t workSize = 256;  // TODO: Sliced add, fix this
+    const size_t workSize = 256;
     clErr = clEnqueueNDRangeKernel(cl->queue, cl->kernel, 1, NULL, &totalSize, &workSize, 0, NULL, NULL);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Failed to execute kernel", clErr);
@@ -80,11 +80,12 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
     // CPU-side verification
     for (size_t i = 0; i < vecSize; i++) {
         if (fabs((vec1[i] + vec2[i]) - vecSum[i]) > 0.00001) {
-            fprintf(stdout, "Arrays do not match! (@%llu %f + %f != %f)\n", i, vec1[i], vec2[i], vecSum[i]);
+            fprintf(stdout, "\033[91mArrays do not match! (@%llu %f + %f != %f)\033[0m\n", i, vec1[i], vec2[i],
+                    vecSum[i]);
             goto freeingReturn;
         }
     }
-    fprintf(stdout, "Arrays match!\n");
+    fprintf(stdout, "\033[92mArrays match!\033[0m\n");
 
 // Freeing
 freeingReturn:

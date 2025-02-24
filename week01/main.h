@@ -11,6 +11,7 @@
 #define SUB_COUNT 2
 
 void FillArrayRandom(float* array, const size_t arraySize, const unsigned int seed);
+void HoleArrayRandom(float* array, const size_t arraySize, const unsigned int seed);
 float GetRandomFloat();
 void PrintArrayPreview(const float* const array, const size_t arraySize, FILE* stream);
 int GetInputInt(void);

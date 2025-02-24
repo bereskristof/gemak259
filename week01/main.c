@@ -1,6 +1,7 @@
 #include "main.h"
 
 #include "add_vector.c"
+#include "interpolate_vector.c"
 
 int main(void) {
     // Generate data array
@@ -34,6 +35,9 @@ int main(void) {
             case 1:
                 SubroutineAddVectors(&cl, array1, array2, ARRAY_SIZE);
                 break;
+            case 2:
+                SubroutineInterpolateVectors(&cl, array1, ARRAY_SIZE);
+                break;
             default:
                 break;
         }
@@ -53,6 +57,18 @@ void FillArrayRandom(float* array, const size_t arraySize, const unsigned int se
     rand();                                   // Throws away first value, as they are too similar with low seed deltas
     for (size_t i = 0; i < arraySize; i++) {  // Randomly fills array with data
         array[i] = GetRandomFloat() * ARRAY_MAX_FLOAT;
+    }
+}
+
+// Randomly "removes" items from an array (sets it to NA)
+// All empty items are guaranteed to have neighbours
+void HoleArrayRandom(float* array, const size_t arraySize, const unsigned int seed) {
+    srand(seed);  // Same seed is used to keep separate runs the same
+    rand();       // Throws away first value, as they are too similar with low seed deltas
+    size_t i = rand() % 30 + 1;
+    while (i < arraySize - 1) {
+        array[i] = NAN;
+        i += rand() % 30 + 2;
     }
 }
 
@@ -79,6 +95,7 @@ void PrintArrayPreview(const float* const array, const size_t arraySize, FILE* s
 int GetInputInt(void) {
     printf("\033[104;30m Select a function \033[0m\n");
     printf("1. Add vectors\n");
+    printf("2. Interpolate vectors\n");
     printf("0. Exit\n");
     printf("> ");
     int selection = -1;
