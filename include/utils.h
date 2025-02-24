@@ -41,8 +41,9 @@ enum UtilErr {
 enum UtilErr LoadTextFile(char* const textBuffer, const size_t textBufferSize, const char filePath[]);
 enum UtilErr InitCl(cl_platform_id* platformId, cl_device_id* deviceId, cl_context* context, cl_command_queue* queue);
 enum UtilErr LoadClProgram(cl_program* program, const char fPath[], const cl_device_id* id, const cl_context* context);
-enum UtilErr InitClContainer(struct ClContainer const* container);
-enum UtilErr LoadClContainerProgram(struct ClContainer const* container, const char filePath[]);
+enum UtilErr InitClContainer(struct ClContainer* container);
+enum UtilErr LoadClContainerProgram(struct ClContainer* container, const char filePath[]);
+enum UtilErr LoadClContainerKernel(struct ClContainer* cl, const char filePath[], const char functionName[]);
 void FreeClContainer(struct ClContainer const* container);
 
 // Error handling

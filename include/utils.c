@@ -129,13 +129,33 @@ enum UtilErr LoadClProgram(cl_program* program, const char fPath[], const cl_dev
 
 // Sets up an OpenCl containers platform, device, context, and queue with default values
 // NOTE: Freeing resources must be done maually
-enum UtilErr InitClContainer(struct ClContainer const* container) {
-    InitCl(&container->context, &container->device, &container->context, &container->queue);
+enum UtilErr InitClContainer(struct ClContainer* container) {
+    enum UtilErr result;
+    result = InitCl(&container->platform, &container->device, &container->context, &container->queue);
+    return result;
 }
 
 // Loads .cl file into an OpenCL containers program
-enum UtilErr LoadClContainerProgram(struct ClContainer const* container, const char filePath[]) {
-    LoadClProgram(&container->program, filePath, &container->device, &container->context);
+enum UtilErr LoadClContainerProgram(struct ClContainer* container, const char filePath[]) {
+    enum UtilErr result;
+    result = LoadClProgram(&container->program, filePath, &container->device, &container->context);
+    return result;
+}
+
+// Loads the provided function from the provided file into the kernel of the CL container
+enum UtilErr LoadClContainerKernel(struct ClContainer* container, const char filePath[], const char functionName[]) {
+    enum UtilErr utilReturn;
+    cl_int clReturn;
+    utilReturn = LoadClProgram(&container->program, filePath, &container->device, &container->context);
+    if (utilReturn != UERR_NONE) {
+        return utilReturn;
+    }
+    container->kernel = clCreateKernel(container->program, functionName, &clReturn);
+    if (clReturn != CL_SUCCESS) {
+        PrintErr("Creating GetArrayMin kernel failed (%d)", clReturn);
+        return UERR_CL_CREATE_PROGRAM_FAILED;  // TODO: Replace with proper error
+    }
+    return UERR_NONE;
 }
 
 // Frees up resources used by OpenCL container
@@ -147,23 +167,23 @@ void FreeClContainer(struct ClContainer const* container) {
     clReleaseDevice(container->device);
 }
 
-// Lists every found CL platform to StdOut
+// Lists every found CL platform to StdErr
 static void PrintClPlatforms(const size_t count, cl_platform_id ids[]) {
-    printf("Found platforms:\n");
+    fprintf(stderr, "Found platforms:\n");
     for (size_t i = 0; i < count; i++) {
         char name[256];
         clGetPlatformInfo(ids[i], CL_PLATFORM_NAME, sizeof(name), name, NULL);
-        printf(" * %s\n", name);
+        fprintf(stderr, " * %s\n", name);
     }
 }
 
-// Lists every found CL device to StdOut
+// Lists every found CL device to StdErr
 static void PrintClDevices(const size_t count, cl_device_id ids[]) {
-    printf("Found devices:\n");
+    fprintf(stderr, "Found devices:\n");
     for (size_t i = 0; i < count; i++) {
         char name[256];
         clGetDeviceInfo(ids[i], CL_DEVICE_NAME, sizeof(name), name, NULL);
-        printf(" * %s\n", name);
+        fprintf(stderr, " * %s\n", name);
     }
 }
 
@@ -375,4 +395,5 @@ void PrintClErr(const char errorMsg[], const cl_int errorCode) {
             fprintf(stderr, "Unknown! ");
             break;
     }
+    fprintf(stderr, "\n");
 }

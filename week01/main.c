@@ -1,9 +1,6 @@
 #include "main.h"
 
-#define ARRAY_SIZE (1 << 14)
-#define LOCAL_WORK_SIZE (1 << 8)
-#define ARRAY_MAX_FLOAT 500.0f
-#define SUB_COUNT 2
+#include "add_vector.c"
 
 int main(void) {
     // Generate data array
@@ -13,13 +10,15 @@ int main(void) {
     FillArrayRandom(array2, ARRAY_SIZE, 5003);
     fprintf(stderr, "Created random arrays (range=0f...%.0ff)\n", ARRAY_MAX_FLOAT);
     fprintf(stderr, "Array 1: ");
-    PrintArrayPreview(array1, ARRAY_SIZE);
+    PrintArrayPreview(array1, ARRAY_SIZE, stderr);
     fprintf(stderr, "Array 2: ");
-    PrintArrayPreview(array2, ARRAY_SIZE);
+    PrintArrayPreview(array2, ARRAY_SIZE, stderr);
 
     // Create OpenCL container
     enum UtilErr utilReturn;
-    struct ClProgramContainer cl = InitClContainer(&utilReturn);
+    struct ClContainer cl;
+    globalUtilConf.initClPrintLog = true;
+    utilReturn = InitClContainer(&cl);
     if (utilReturn != UERR_NONE)
         return utilReturn;
     fprintf(stderr, "Set up OpenCL context successfully!\n");
@@ -32,13 +31,16 @@ int main(void) {
             case 0:
                 shouldClose = true;
                 break;
+            case 1:
+                SubroutineAddVectors(&cl, array1, array2, ARRAY_SIZE);
+                break;
             default:
                 break;
         }
     }
 
     // Free resources
-    // TODO: Free container
+    FreeClContainer(&cl);
     free(array2);
     free(array1);
     fprintf(stderr, "Resources freed, no errors occured!\n");
@@ -61,47 +63,22 @@ float GetRandomFloat() {
 
 // Print a preview of an array
 // Assumes the array is at least 8 items long
-void PrintArrayPreview(const float* const array, const size_t arraySize) {
-    fprintf(stderr, "[");
+void PrintArrayPreview(const float* const array, const size_t arraySize, FILE* stream) {
+    fprintf(stream, "[");
     for (size_t i = 0; i < 4; i++) {
-        fprintf(stderr, "%6.2ff, ", array[i]);
+        fprintf(stream, "%6.2ff, ", array[i]);
     }
-    fprintf(stderr, "..., ");
+    fprintf(stream, "..., ");
     for (size_t i = arraySize - 3; i < arraySize - 1; i++) {
-        fprintf(stderr, "%6.2ff, ", array[i]);
+        fprintf(stream, "%6.2ff, ", array[i]);
     }
-    fprintf(stderr, "%6.2ff]\n", array[arraySize - 1]);
-}
-
-// Creates and returns a new CL container
-// Sets success to a non 0 value if it failed
-struct ClProgramContainer InitClContainer(enum UtilErr* utilSuccess) {
-    struct ClProgramContainer cl;
-    enum UtilErr utilReturn;
-    utilReturn = InitCl(&cl.platform, &cl.device, &cl.context, &cl.queue);
-    *utilSuccess = (int)utilReturn;
-    return cl;
-}
-
-// Loads the provided function from the provided file into the kernel of the CL container
-enum UtilErr LoadClContainerKernel(struct ClProgramContainer* cl, const char filePath[], const char functionName[]) {
-    enum UtilErr utilReturn;
-    cl_int clReturn;
-    utilReturn = LoadClProgram(&cl->program, filePath, &cl->device, &cl->context);
-    if (utilReturn != UERR_NONE) {
-        return utilReturn;
-    }
-    cl->kernel = clCreateKernel(cl->program, functionName, &clReturn);
-    if (clReturn != CL_SUCCESS) {
-        PrintErr("Creating GetArrayMin kernel failed (%d)", clReturn);
-        return UERR_CL_CREATE_PROGRAM_FAILED;  // TODO: Replace with proper error
-    }
-    return UERR_NONE;
+    fprintf(stream, "%6.2ff]\n", array[arraySize - 1]);
 }
 
 // Returns the read number or -1
 int GetInputInt(void) {
     printf("\033[104;30m Select a function \033[0m\n");
+    printf("1. Add vectors\n");
     printf("0. Exit\n");
     printf("> ");
     int selection = -1;
