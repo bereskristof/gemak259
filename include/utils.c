@@ -10,9 +10,8 @@ struct GlobalUtilConf globalUtilConf = {
 
 // Loads the contents of the text file at `filePath` into `textBuffer`.
 // Known issues: Failes if the target file is empty
-// BUG: crlf is fucked
 enum UtilErr LoadTextFile(char* const textBuffer, const size_t textBufferSize, const char filePath[]) {
-    FILE* const file = fopen(filePath, "r");
+    FILE* const file = fopen(filePath, "rb");  // Binary is needed for CRLF
     if (file == NULL)
         return UERR_FILE_IO_FAILED;
     const size_t readChars = fread(textBuffer, sizeof(char), textBufferSize, file);
