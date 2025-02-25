@@ -10,6 +10,7 @@ struct GlobalUtilConf globalUtilConf = {
 
 // Loads the contents of the text file at `filePath` into `textBuffer`.
 // Known issues: Failes if the target file is empty
+// BUG: crlf is fucked
 enum UtilErr LoadTextFile(char* const textBuffer, const size_t textBufferSize, const char filePath[]) {
     FILE* const file = fopen(filePath, "r");
     if (file == NULL)
@@ -94,7 +95,7 @@ enum UtilErr LoadClProgram(cl_program* program, const char fPath[], const cl_dev
         PrintClErr("clCreateProgramWithSource failed", clResult);
         return UERR_CL_CREATE_PROGRAM_FAILED;
     }
-    clResult = clBuildProgram(*program, 1, deviceId, (char*)"-w", NULL, NULL);
+    clResult = clBuildProgram(*program, 1, deviceId, (char*)"-w -cl-std=CL3.0", NULL, NULL);
     if (clResult != CL_SUCCESS && clResult != CL_BUILD_PROGRAM_FAILURE) {
         PrintClErr("clBuildProgram failed", clResult);
         return UERR_CL_BUILD_PROGRAM_FAILED;
