@@ -3,6 +3,7 @@
 #include "add_vector.c"
 #include "interpolate_vector.c"
 #include "minmax_vector.c"
+#include "sliding_avg_vector.c"
 
 int main(void) {
     // Generate data array
@@ -45,6 +46,8 @@ int main(void) {
             case 4:
                 SubroutineMinMaxVectors(&cl, array1, ARRAY_SIZE, true);
                 break;
+            case 5:
+                SubroutineAverageVectors(&cl, array1, ARRAY_SIZE);
             default:
                 break;
         }
@@ -105,6 +108,7 @@ int GetInputInt(void) {
     printf("2. Interpolate vectors\n");
     printf("3. Vector minimum\n");
     printf("4. Vector maximum\n");
+    printf("5. Vector sliding average\n");
     printf("0. Exit\n");
     printf("> ");
     int selection = -1;
