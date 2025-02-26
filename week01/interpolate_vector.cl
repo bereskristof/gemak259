@@ -15,7 +15,7 @@ __kernel void VectorFill(__global float* a, int arrayCount) {
     int currentIndex = id;
     while (currentIndex < arrayCount) {
         if (isnan(a[currentIndex])) {
-            a[currentIndex] = (a[currentIndex - 1] + a[currentIndex + 1]) * 0.5;
+            a[currentIndex] = (a[currentIndex - 1] + a[currentIndex + 1]) * 0.5f;
         }
         currentIndex += THREADS_COUNT;
     }

@@ -2,6 +2,7 @@
 
 #include "add_vector.c"
 #include "interpolate_vector.c"
+#include "minmax_vector.c"
 
 int main(void) {
     // Generate data array
@@ -37,6 +38,12 @@ int main(void) {
                 break;
             case 2:
                 SubroutineInterpolateVectors(&cl, array1, ARRAY_SIZE);
+                break;
+            case 3:
+                SubroutineMinMaxVectors(&cl, array1, ARRAY_SIZE, false);
+                break;
+            case 4:
+                SubroutineMinMaxVectors(&cl, array1, ARRAY_SIZE, true);
                 break;
             default:
                 break;
@@ -96,6 +103,8 @@ int GetInputInt(void) {
     printf("\033[104;30m Select a function \033[0m\n");
     printf("1. Add vectors\n");
     printf("2. Interpolate vectors\n");
+    printf("3. Vector minimum\n");
+    printf("4. Vector maximum\n");
     printf("0. Exit\n");
     printf("> ");
     int selection = -1;
