@@ -13,6 +13,7 @@
 // Global variables to configure util behaviour
 extern struct GlobalUtilConf {
     bool initClPrintLog;               // Prints device and platform data to the console
+    bool initClProfiling;              // Enables profiling for command queue
     size_t loadClProgramMaxCharCount;  // Maximum size of .cl file
 } globalUtilConf;
 

@@ -5,6 +5,7 @@ static void PrintClDevices(const size_t count, cl_device_id ids[]);
 
 struct GlobalUtilConf globalUtilConf = {
     .initClPrintLog = false,
+    .initClProfiling = false,
     .loadClProgramMaxCharCount = 4096,
 };
 
@@ -63,7 +64,9 @@ enum UtilErr InitCl(cl_platform_id* platformId, cl_device_id* deviceId, cl_conte
     }
 
     // Command queue
-    *queue = clCreateCommandQueueWithProperties(*context, *deviceId, NULL, &clResult);
+    const cl_queue_properties properties[3] = {CL_QUEUE_PROPERTIES,
+                                               globalUtilConf.initClProfiling ? CL_QUEUE_PROFILING_ENABLE : 0, 0};
+    *queue = clCreateCommandQueueWithProperties(*context, *deviceId, properties, &clResult);
     if (clResult != CL_SUCCESS) {
         PrintClErr("clCreateCommandQueueWithProperties failed", clResult);
         return UERR_CL_CREATE_QUEUE_FAILED;

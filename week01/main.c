@@ -21,6 +21,7 @@ int main(void) {
     enum UtilErr utilReturn;
     struct ClContainer cl;
     globalUtilConf.initClPrintLog = true;
+    globalUtilConf.initClProfiling = true;
     utilReturn = InitClContainer(&cl);
     if (utilReturn != UERR_NONE)
         return utilReturn;

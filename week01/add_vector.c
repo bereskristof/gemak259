@@ -58,7 +58,8 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
     // Calculation & data return
     const size_t totalSize = THREADS_COUNT;
     const size_t workSize = 256;
-    clErr = clEnqueueNDRangeKernel(cl->queue, cl->kernel, 1, NULL, &totalSize, &workSize, 0, NULL, NULL);
+    cl_event runEvent;
+    clErr = clEnqueueNDRangeKernel(cl->queue, cl->kernel, 1, NULL, &totalSize, &workSize, 0, NULL, &runEvent);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Failed to execute kernel", clErr);
         goto freeingReturn;
@@ -69,6 +70,19 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
         goto freeingReturn;
     }
 
+    cl_ulong startTime;
+    cl_ulong endTime;
+    clErr = clGetEventProfilingInfo(runEvent, CL_PROFILING_COMMAND_START, sizeof(startTime), (void*)&startTime, NULL);
+    if (clErr != CL_SUCCESS) {
+        PrintClErr("Failed to fetch event start time", clErr);
+        goto freeingReturn;
+    }
+    clErr = clGetEventProfilingInfo(runEvent, CL_PROFILING_COMMAND_END, sizeof(endTime), (void*)&endTime, NULL);
+    if (clErr != CL_SUCCESS) {
+        PrintClErr("Failed to fetch event end time", clErr);
+        goto freeingReturn;
+    }
+
     // Printing result
     fprintf(stdout, "Array 1: ");
     PrintArrayPreview(vec1, vecSize, stdout);
@@ -76,6 +90,7 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
     PrintArrayPreview(vec2, vecSize, stdout);
     fprintf(stdout, "Array +: ");
     PrintArrayPreview(vecSum, vecSize, stdout);
+    fprintf(stdout, "Runtime: %8.4lf sec\n", (endTime - startTime) / 1000.0);
 
     // CPU-side verification
     for (size_t i = 0; i < vecSize; i++) {
