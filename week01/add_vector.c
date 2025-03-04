@@ -1,5 +1,7 @@
 #include "main.h"
 
+#define NSEC_TO_SEC 0.000000001
+
 // Adds two arrays togerther, and prints the result to StdOut
 void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], const size_t vecSize) {
     enum UtilErr err;
@@ -72,7 +74,7 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
 
     cl_ulong startTime;
     cl_ulong endTime;
-    clErr = clGetEventProfilingInfo(runEvent, CL_PROFILING_COMMAND_START, sizeof(startTime), (void*)&startTime, NULL);
+    clErr = clGetEventProfilingInfo(runEvent, CL_PROFILING_COMMAND_QUEUED, sizeof(startTime), (void*)&startTime, NULL);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Failed to fetch event start time", clErr);
         goto freeingReturn;
@@ -90,7 +92,7 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
     PrintArrayPreview(vec2, vecSize, stdout);
     fprintf(stdout, "Array +: ");
     PrintArrayPreview(vecSum, vecSize, stdout);
-    fprintf(stdout, "Runtime: %8.4lf sec\n", (endTime - startTime) / 1000.0);
+    fprintf(stdout, "Runtime: %10.6lf sec\n", (endTime - startTime) * NSEC_TO_SEC);
 
     // CPU-side verification
     for (size_t i = 0; i < vecSize; i++) {
@@ -106,3 +108,5 @@ void SubroutineAddVectors(struct ClContainer* cl, float vec1[], float vec2[], co
 freeingReturn:
     free(vecSum);
 }
+
+#undef NSEC_TO_SEC
