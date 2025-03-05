@@ -57,7 +57,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Free resources
-    FreeClContainer(&cl);
+    clReleaseCommandQueue(cl.queue);
+    clReleaseContext(cl.context);
+    clReleaseDevice(cl.device);
     FreeMatrix(&m2);
     FreeMatrix(&m1);
     fprintf(stderr, "Resources freed, no errors occured!\n");
@@ -116,7 +118,7 @@ void RandomFillMatrix(Matrix* const matrix, const unsigned int seed) {
     const unsigned int h = matrix->size.y;
     for (size_t x = 0; x < w; x++) {
         for (size_t y = 0; y < h; y++) {
-            SetMatrix(matrix, x, y, GetRandomFloat() * 10 - 5);
+            SetMatrix(matrix, y, x, GetRandomFloat() * 10 - 5);
         }
     }
 }
@@ -141,25 +143,25 @@ void PreviewMatrix(const Matrix matrix) {
         fprintf(stderr, "│      ...");
         switch (matrix.size.x) {
             default:
-            case 4:
-                fprintf(stderr, "      ...");
-                fallthrough;
             case 3:
                 fprintf(stderr, "      ...");
                 fallthrough;
             case 2:
-                fprintf(stderr, " ...");
-                break;
+                fprintf(stderr, "      ...");
+                fallthrough;
             case 1:
                 break;
         }
+        if (matrix.size.x > 3)
+            fprintf(stderr, " ...");
         fprintf(stderr, " │\n");
     }
 }
 
 // Frees memory for matrix
 void FreeMatrix(Matrix* const matrix) {
-    free(matrix->items);
+    if (matrix->items != NULL)
+        free(matrix->items);
 }
 
 // Perform a specific matrix operation
@@ -167,6 +169,7 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
     enum UtilErr err;
     cl_int clErr;
     bool shouldLoadMat2 = false;
+    Matrix mr = (Matrix){.items = NULL, .size = {0, 0}};
 
     // Load correct kernel
     {
@@ -189,7 +192,7 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
         }
         if (err != UERR_NONE) {
             // Errmsg comes from LoadClContainerKernel
-            return;
+            goto errReturn;
         }
     }
 
@@ -201,13 +204,13 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
             clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, m1ByteSize, m1.items, &clErr);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not load 1st matrix", clErr);
-            return;
+            goto errReturn;
         }
         // Args (array)
         clErr = clSetKernelArg(cl->kernel, 1, sizeof(m1cl), (void*)&m1cl);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not set 2nd arg", clErr);
-            return;
+            goto errReturn;
         }
         // Args (size)
         cl_uint2 m1size;
@@ -216,7 +219,7 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
         clErr = clSetKernelArg(cl->kernel, 2, sizeof(m1size), (void*)&m1size);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not set 3rd arg", clErr);
-            return;
+            goto errReturn;
         }
     }
 
@@ -228,13 +231,13 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
             clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, m2ByteSize, m2.items, &clErr);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not load 2nd matrix", clErr);
-            return;
+            goto errReturn;
         }
         // Args (array)
         clErr = clSetKernelArg(cl->kernel, 3, sizeof(m2cl), (void*)&m2cl);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not set 4th arg", clErr);
-            return;
+            goto errReturn;
         }
         // Args (size)
         cl_uint2 m2size;
@@ -243,12 +246,11 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
         clErr = clSetKernelArg(cl->kernel, 4, sizeof(m2size), (void*)&m2size);
         if (clErr != CL_SUCCESS) {
             PrintClErr("Could not set 5th arg", clErr);
-            return;
+            goto errReturn;
         }
     }
 
     // Sets up result matrix
-    Matrix mr;
     cl_mem mrcl;
     {
         // Size calc
@@ -267,7 +269,7 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
                 mr = AllocMatrix(m1.size.x, 1);
                 break;
             default:
-                return;
+                goto errReturn;
         }
         mrByteSize = mr.size.x * mr.size.y * sizeof(mr.items[0]);
         // Buffer
@@ -330,6 +332,8 @@ void MatrixCalc(const enum MatrixCalcOp op, struct ClContainer* cl, const Matrix
 // Free
 errReturn:
     FreeMatrix(&mr);
+    clReleaseKernel(cl->kernel);
+    clReleaseProgram(cl->program);
 }
 
 // Returns `true` if the verification succeeded
