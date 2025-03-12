@@ -4,7 +4,9 @@
         "cl.h": "c",
         "cmath": "c",
         "stdarg.h": "c",
-        "limits": "c"
+        "limits": "c",
+        "main.h": "c",
+        "**/*.h": "c",
     },
     "editor.formatOnSave": true,
 }

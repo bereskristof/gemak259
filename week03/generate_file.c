@@ -1,11 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-
-#define FILE_SIZE ((1 << 10) * (1 << 10) * 128)  // 128 MiB
-
-void PrintProgress(const size_t ticks);
+#include "generate_file.h"
 
 int main(void) {
+    fprintf(stderr, "Generating dummy file binary for week 3\n");
+    fprintf(stderr, "Final size is going to be 128 MiB\n");
     FILE* dummyFile = fopen64("dummy_file.bin", "w");
     srand(12);
     for (size_t t = 0; t < 10; t++) {

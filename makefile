@@ -1,8 +1,8 @@
 MAKE := make
-PATHS := include/ week01/ week01/task02/ week01/task04/ week01/task08/ week02/
+PATHS := include/ week01/ week01/task02/ week01/task04/ week01/task08/ week02/ week03/
 MAKE_TARGET = windows
 
-.PHONY: default all clean-all
+.PHONY: default all clean
 
 default: all
 
@@ -11,7 +11,7 @@ all:
 		$(MAKE) -C $$path;\
 	done
 
-clean-all:
+clean:
 	for path in $(PATHS); do\
 		$(MAKE) clean -C $$path;\
 	done
