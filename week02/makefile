@@ -7,4 +7,4 @@ default: main.c
 	$(CC) main.c -o main $(CC_FLAGS)
 
 clean:
-	rm -f main.exe main
+	rm -f main

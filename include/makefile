@@ -1,13 +1,9 @@
 CC := gcc
 CC_FLAGS := -std=c23 -pedantic -fdiagnostics-color=always -lopencl -Wall -Wextra
 
-.PHONY: default windows unix clean
+.PHONY: default clean
 
 default: libutils.a
-
-windows: libutils.a
-
-unix: libutils.a
 
 libutils.a: utils.c
 	$(CC) -c utils.c -o utils.o $(CC_FLAGS)
