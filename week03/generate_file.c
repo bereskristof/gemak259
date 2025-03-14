@@ -1,8 +1,12 @@
 #include "generate_file.h"
 
 int main(void) {
+    if (IfFileExists()) {
+        fprintf(stderr, "Dummy file already exist, skipping\n");
+        return 0;
+    }
     fprintf(stderr, "Generating dummy file binary for week 3\n");
-    fprintf(stderr, "Final size is going to be 128 MiB\n");
+    fprintf(stderr, "Final size is going to be %d MiB\n", FILE_SIZE / (1 << 20));
     FILE* dummyFile = fopen64("dummy_file.bin", "w");
     srand(12);
     for (size_t t = 0; t < 10; t++) {
@@ -23,4 +27,11 @@ void PrintProgress(const size_t ticks) {
     for (size_t i = 0; i < (9 - ticks); i++)
         fprintf(stderr, " ");
     fprintf(stderr, "]");
+}
+
+bool IfFileExists(void) {
+    FILE* dummyFile = fopen64("dummy_file.bin", "r");
+    const bool isFileExisting = dummyFile != NULL;
+    fclose(dummyFile);
+    return isFileExisting;
 }
