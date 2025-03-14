@@ -35,6 +35,6 @@ ulong CountBytes_Host(int* error, FILE* const file);
 ulong CountBytes_Device(int* error, FILE* const file);
 ulong IterateBlocks_Device(int* error, struct ClContainer* const cl, FILE* const file);
 int EnqueueCountBlockBytes_Device(cl_event* e, ulong* n, cl_ptr const cl, const byte* block, const size_t count);
-// void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData);
+void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData);
 
 #endif  // MAIN_C

@@ -1,5 +1,7 @@
 #include "main.h"
 
+static ulong globalByteCounter_Device;
+
 int main(int argc, char* argv[]) {
     const char* fileName = GetFileNameAlloc(argc, argv);
     FILE* file = fopen64(fileName, "rb");
@@ -156,7 +158,8 @@ ulong IterateBlocks_Device(int* error, struct ClContainer* const cl, FILE* const
         goto errReturn;
     }
 
-    returnValue = ArraySum_Host(byteCountList, i);
+    returnValue = globalByteCounter_Device;
+    // returnValue = ArraySum_Host(byteCountList, i);
 
 errReturn:
     free(block);
@@ -222,9 +225,12 @@ int EnqueueCountBlockBytes_Device(cl_event* ev, ulong* n, cl_ptr const cl, const
         return CL_ANY_ERROR;
     }
     // Create callback
-    // clSetEventCallback(*ev, CL_COMPLETE, (*CallbackCountBlockBytes_Device), (void*)n);
+    clSetEventCallback(*ev, CL_COMPLETE, (*CallbackCountBlockBytes_Device), (void*)n);
 
     return SUCCESS;
 }
 
-// void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData) {}
+void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData) {
+    const ulong data = *(ulong*)userData;
+    __atomic_fetch_add(&globalByteCounter_Device, data, __ATOMIC_SEQ_CST);  // Using GCC specific atomic add
+}
