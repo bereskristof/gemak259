@@ -85,14 +85,6 @@ ulong CountBlockBytes_Host(byte* const block, const size_t byteCount, const byte
     return count;
 }
 
-ulong ArraySum_Host(ulong* const vec, const size_t vecSize) {
-    ulong sum = 0;
-    for (size_t i = 0; i < vecSize; i++) {
-        sum += vec[i];
-    }
-    return sum;
-}
-
 ulong CountBytes_Device(int* error, FILE* const file) {
     enum UtilErr utilErr;
     struct ClContainer cl;
