@@ -7,10 +7,11 @@
 #endif
 
 // Gets
-__kernel void CountBytes(__global ulong* count, __global uchar* block, __private ulong blockSize) {
+__kernel void CountBytes(__global uint* count, __global uchar* block, __private ulong blockSize) {
     const int id = get_global_id(0);
     for (int i = id; i < blockSize; i += WORK_SIZE) {
-        if (block[i] == COUNTED_BYTE)
+        if (block[i] == COUNTED_BYTE) {
             atomic_inc(count);
+        }
     }
 }

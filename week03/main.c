@@ -1,6 +1,6 @@
 #include "main.h"
 
-static ulong globalByteCounter_Device;
+static uint globalByteCounter_Device;
 
 int main(int argc, char* argv[]) {
     const char* fileName = GetFileNameAlloc(argc, argv);
@@ -129,7 +129,7 @@ ulong IterateBlocks_Device(int* error, struct ClContainer* const cl, FILE* const
     byte* block = malloc(BLOCK_SIZE * sizeof(byte));
     size_t i = 0;
     cl_event* events = malloc(MAX_BLOCKS * sizeof(cl_event));
-    ulong* byteCountList = malloc(MAX_BLOCKS * sizeof(ulong));
+    uint* byteCountList = malloc(MAX_BLOCKS * sizeof(uint));
     ulong returnValue = 0;
 
     while (i < MAX_BLOCKS) {
@@ -158,8 +158,7 @@ ulong IterateBlocks_Device(int* error, struct ClContainer* const cl, FILE* const
         goto errReturn;
     }
 
-    returnValue = globalByteCounter_Device;
-    // returnValue = ArraySum_Host(byteCountList, i);
+    returnValue = (ulong)globalByteCounter_Device;
 
 errReturn:
     free(block);
@@ -168,7 +167,7 @@ errReturn:
     return returnValue;
 }
 
-int EnqueueCountBlockBytes_Device(cl_event* ev, ulong* n, cl_ptr const cl, const byte* block, const size_t count) {
+int EnqueueCountBlockBytes_Device(cl_event* ev, uint* n, cl_ptr const cl, const byte* block, const size_t count) {
     cl_int clErr;
 
     // Create kernel
@@ -179,14 +178,14 @@ int EnqueueCountBlockBytes_Device(cl_event* ev, ulong* n, cl_ptr const cl, const
     }
 
     // Create block buffer
-    const ulong zero = 0;
+    const uint zero = 0;
     cl_mem clRes =
         clCreateBuffer(cl->context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(zero), (void*)&zero, &clErr);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Could not create OpenCL buffer!", clErr);
         return CL_ANY_ERROR;
     }
-    cl_mem clBlock = clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, count, (void*)block, &clErr);
+    cl_mem clBlock = clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, count, (void*)block, &clErr);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Could not create OpenCL buffer!", clErr);
         return CL_ANY_ERROR;
@@ -219,7 +218,7 @@ int EnqueueCountBlockBytes_Device(cl_event* ev, ulong* n, cl_ptr const cl, const
     }
 
     // Enqueue read
-    clErr = clEnqueueReadBuffer(cl->queue, clRes, CL_FALSE, 0, sizeof(ulong), n, 0, NULL, ev);
+    clErr = clEnqueueReadBuffer(cl->queue, clRes, CL_FALSE, 0, sizeof(zero), n, 0, NULL, ev);
     if (clErr != CL_SUCCESS) {
         PrintClErr("Could not read OpenCl buffer!", clErr);
         return CL_ANY_ERROR;
@@ -230,7 +229,7 @@ int EnqueueCountBlockBytes_Device(cl_event* ev, ulong* n, cl_ptr const cl, const
     return SUCCESS;
 }
 
-void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData) {
-    const ulong data = *(ulong*)userData;
+void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event, cl_int, void* userData) {
+    const uint data = *(uint*)userData;
     __atomic_fetch_add(&globalByteCounter_Device, data, __ATOMIC_SEQ_CST);  // Using GCC specific atomic add
 }

@@ -27,6 +27,7 @@
 
 typedef unsigned char byte;
 typedef unsigned long long ulong;
+typedef unsigned int uint;
 typedef struct ClContainer* cl_ptr;
 
 char* GetFileNameAlloc(const int argc, char* const argv[]);
@@ -34,7 +35,7 @@ ulong CountBlockBytes_Host(byte* const block, const size_t byteCount, const byte
 ulong CountBytes_Host(int* error, FILE* const file);
 ulong CountBytes_Device(int* error, FILE* const file);
 ulong IterateBlocks_Device(int* error, struct ClContainer* const cl, FILE* const file);
-int EnqueueCountBlockBytes_Device(cl_event* e, ulong* n, cl_ptr const cl, const byte* block, const size_t count);
+int EnqueueCountBlockBytes_Device(cl_event* e, uint* n, cl_ptr const cl, const byte* block, const size_t count);
 void CL_CALLBACK CallbackCountBlockBytes_Device(cl_event event, cl_int status, void* userData);
 
 #endif  // MAIN_C
