@@ -7,6 +7,7 @@
         "limits": "c",
         "main.h": "c",
         "**/*.h": "c",
+        "type_traits": "c"
     },
     "editor.formatOnSave": true,
 }
