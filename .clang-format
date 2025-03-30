@@ -1,3 +1,6 @@
 BasedOnStyle: Chromium
 ColumnLimit: 120
 IndentWidth: 4
+# Derive added for the first 3 weeks
+DerivePointerAlignment: true
+PointerAlignment: Right

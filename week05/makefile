@@ -1,5 +1,5 @@
 CC := gcc
-CC_FLAGS := -std=c23 -pedantic -fdiagnostics-color=always -I../include -L../include -lutils -lopencl -Wall -Wextra
+CC_FLAGS := -std=c23 -pedantic -fdiagnostics-color=always -I../include -L../include -lutils -lopencl -Wall -Wextra -mlzcnt
 
 .PHONY: default clean
 
