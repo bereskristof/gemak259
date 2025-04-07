@@ -10,6 +10,7 @@ Tools:
 
 Options:
   -h       Shows this screen.
+  -v       Prints the programs version.
   -i       Reads the contents from stdin instead of FILEs.
   -o DIR   Specifies the output directory.
   -f       Silently continues skipping the file if some error occures.

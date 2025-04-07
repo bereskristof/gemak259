@@ -28,6 +28,7 @@ pub fn main() u8 {
 
     switch (run_config.tool) {
         .Default, .Help => stdout.print(help_text, .{name}) catch return exit_complete_failure,
+        .Version => stdout.print("{s}\n", .{version}) catch return exit_complete_failure,
         else => _ = stdout.write("Todo") catch return exit_complete_failure,
     }
 

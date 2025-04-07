@@ -97,7 +97,7 @@ pub const Properties = struct {
         }
     }
 
-    fn setstdin(self: *This) ArgError!void {
+    fn setStdin(self: *This) ArgError!void {
         if (self.source == .files)
             return ArgError.ConflictingInputs;
         self.source = .{ .stdin = {} };
@@ -118,7 +118,11 @@ pub const Properties = struct {
     }
 
     fn setTool(self: *This, tool: Tool) void {
-        if (tool == .Help) self.tool = tool else if (self.tool == .Default) self.tool = tool;
+        if (tool == .Help or tool == .Version) {
+            self.tool = tool;
+        } else if (self.tool == .Default) {
+            self.tool = tool;
+        }
     }
 
     fn setSilent(self: *This) void {
@@ -159,7 +163,8 @@ pub const Properties = struct {
         for (flag_list[1..], 1..) |char, i| {
             switch (char) {
                 'h' => self.setTool(.Help),
-                'i' => try self.setstdin(),
+                'v' => self.setTool(.Version),
+                'i' => try self.setStdin(),
                 'f' => self.setSilent(),
                 'o', 'k' => return i,
                 else => return ArgError.UnknownArgument,
