@@ -1,0 +1,16 @@
+Performs basic image handling methods on netpbm images.
+
+Usage:
+  {s} (blur | gauss | median) FILE...
+
+Tools:
+  blur    Blurs the image using box blur.
+  gauss   Blurs the image using gaussian blur.
+  median  Perform median filtering on the image.
+
+Options:
+  -h       Shows this screen.
+  -i       Reads the contents from stdin instead of FILEs.
+  -o DIR   Specifies the output directory.
+  -f       Silently continues skipping the file if some error occures.
+  -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd positive value.

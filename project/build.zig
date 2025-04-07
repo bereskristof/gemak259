@@ -1,5 +1,15 @@
 const std = @import("std");
 
+const name = "_c";
+
+const BuildZon = struct {
+    name: enum { _c },
+    version: []const u8,
+    fingerprint: u128,
+    minimum_zig_version: []const u8,
+    paths: []const []const u8,
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -9,11 +19,20 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    // Setting .name & .version during build
+    const build_config = b.addOptions();
+    const build_zon: BuildZon = @import("build.zig.zon");
+    build_config.addOption([]const u8, "name", name);
+    build_config.addOption([]const u8, "version", build_zon.version);
+    exe_mod.addOptions("build_config", build_config);
+
     const exe = b.addExecutable(.{
-        .name = "_c",
+        .name = name,
         .root_module = exe_mod,
     });
 
+    // OpenCl libs
     exe.addIncludePath(.{ .cwd_relative = "include/" });
     exe.addLibraryPath(.{ .cwd_relative = "lib/" });
     exe.linkSystemLibrary("OpenCl.dll");

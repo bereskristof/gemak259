@@ -85,11 +85,6 @@ fn readP3Header(header_size: *usize, file_data: []const u8) UnsupportedFileError
     };
 }
 
-pub fn normalize(self: *Self) !Self { // TODO: Implement
-    _ = self;
-    return UnsupportedFileError.Unsupported;
-}
-
 pub fn print(self: Self) !void {
     const stderr = std.io.getStdErr();
     const out = stderr.writer();
@@ -103,7 +98,7 @@ pub fn print(self: Self) !void {
     }
 }
 
-pub fn release(self: *Self) void {
+pub fn deinit(self: *Self) void {
     self.alloc.free(self.data);
 }
 
