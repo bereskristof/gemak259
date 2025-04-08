@@ -1,4 +1,5 @@
 Performs basic image handling methods on netpbm images.
+Currently supports ASCII (P3) and binary (P6) .ppm files.
 
 Usage:
   {s} (blur | gauss | median) FILE...
@@ -14,4 +15,5 @@ Options:
   -i       Reads the contents from stdin instead of FILEs.
   -o DIR   Specifies the output directory.
   -f       Silently continues skipping the file if some error occures.
-  -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd positive value.
+  -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd
+           positive value.
