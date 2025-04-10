@@ -30,16 +30,6 @@ data: []const u8,
 
 alloc: std.mem.Allocator,
 
-pub fn initFromFile(a: std.mem.Allocator, file_path: []const u8) !This {
-    const cwd = std.fs.cwd();
-    const file = try cwd.openFile(file_path, .{});
-    defer file.close();
-
-    const file_data = try file.readToEndAlloc(a, 1 << 30);
-    defer a.free(file_data);
-    return try init(a, file_data);
-}
-
 pub fn init(a: std.mem.Allocator, file_data: []const u8) UnsupportedFileError!This {
     if (file_data.len < 3 or file_data[0] != 'P' or !std.ascii.isWhitespace(file_data[2])) {
         return UnsupportedFileError.WrongMagicNumber;

@@ -40,7 +40,7 @@ pub fn main() u8 {
     switch (run_config.tool) {
         .Default, .Help => stdout.print(help_text, .{name}) catch return exit_complete_failure,
         .Version => stdout.print("{s}\n", .{version}) catch return exit_complete_failure,
-        else => _ = handleInputs(run_config) catch |err| switch (err) {
+        else => _ = handleInputs(allocator, run_config) catch |err| switch (err) {
             error.FileNotFound => return errorExit("Error: File not found!\n"),
             error.AccessDenied => return errorExit("Error: Access denied!\n"),
             error.SourceIsMissing => return errorExit("Error: No source provided!\n"),
@@ -54,12 +54,12 @@ pub fn main() u8 {
     return exit_success;
 }
 
-fn handleInputs(properies: args.Properties) HandlingError!void {
+fn handleInputs(a: std.mem.Allocator, properies: args.Properties) HandlingError!void {
     switch (properies.source) {
         .files => {
             var i: usize = 0;
             while (properies.getFile(i)) |file_name| : (i += 1) {
-                handleFile(file_name) catch |err| if (!properies.silent) {
+                handleFile(a, file_name) catch |err| if (!properies.silent) {
                     return err;
                 } else {
                     return;
@@ -67,27 +67,44 @@ fn handleInputs(properies: args.Properties) HandlingError!void {
             }
         },
         .stdin => {
-            return; // TODO: Replace with implementation
+            const stdin = std.io.getStdIn().reader();
+            const data = stdin.readAllAlloc(a, 1 << 30) catch return HandlingError.OutOfMemory;
+            defer a.free(data);
+
+            handleData(a, data) catch |err| if (!properies.silent) {
+                return err;
+            } else {
+                return;
+            };
+
+            return;
         },
         .none => return HandlingError.SourceIsMissing,
     }
 }
 
-fn handleFile(file_name: []const u8) HandlingError!void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var image = Image.initFromFile(allocator, file_name) catch |err| switch (err) {
+fn handleFile(a: std.mem.Allocator, file_name: []const u8) HandlingError!void {
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
         error.FileNotFound => return HandlingError.FileNotFound,
         error.AccessDenied => return HandlingError.AccessDenied,
+        else => return HandlingError.UnknownError,
+    };
+    defer file.close();
+
+    const file_data = file.readToEndAlloc(a, 1 << 30) catch return HandlingError.OutOfMemory;
+    defer a.free(file_data);
+    try handleData(a, file_data);
+}
+
+fn handleData(a: std.mem.Allocator, file_data: []const u8) HandlingError!void {
+    var image = Image.init(a, file_data) catch |err| switch (err) {
         error.Unsupported => return HandlingError.Unsupported,
         error.WrongMagicNumber => return HandlingError.Unsupported,
         error.CorruptedHeaderData => return HandlingError.FileIsDamaged,
         error.OutOfMemory => return HandlingError.OutOfMemory,
         error.UnreadableString => return HandlingError.FileIsDamaged,
         error.DamagedData => return HandlingError.FileIsDamaged,
-        else => return HandlingError.UnknownError,
     };
     defer image.deinit();
 
