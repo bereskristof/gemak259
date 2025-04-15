@@ -5,7 +5,7 @@ const cl = @cImport(
     @cInclude("../include/CL/opencl.h"),
 );
 
-const ClError = error{
+pub const ClError = error{
     OutOfMemory, // The host could not allocate the resources
     OutOfResources, // The device could not allocate the resources
     PlatformNotFound, // Zero platforms are available (cl_khr_icd only)
