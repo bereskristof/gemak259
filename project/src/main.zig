@@ -13,10 +13,16 @@ const name = build_config.name;
 const version = build_config.version;
 
 // Used when a fatal error occured, and the user was already notified about the error.
-// TODO: This breaks silent
 const HandledError = error{
     Fatal,
     FatalMessageFailed,
+};
+
+const ClBundle = struct {
+    platform: cl.PlatformId,
+    device: cl.DeviceId,
+    context: cl.Context,
+    queue: cl.CommandQueue,
 };
 
 pub fn main() u8 {
@@ -25,20 +31,6 @@ pub fn main() u8 {
     const allocator = gpa.allocator();
 
     const stdout = std.io.getStdOut().writer();
-
-    // TODO: Move OpenCL init to where it should be
-    const platforms = clGetPlatforms(allocator) catch |err| return getFatalErrorValue(err);
-    defer allocator.free(platforms);
-
-    const devices = clGetDevices(allocator, platforms) catch |err| return getFatalErrorValue(err);
-    defer allocator.free(devices); // TODO: Make this better
-    defer for (devices) |device| device.release();
-
-    const context = clGetContext(devices) catch |err| return getFatalErrorValue(err);
-    defer context.release();
-
-    const queue = clGetCommandQueue(context, devices[0]) catch |err| return getFatalErrorValue(err); // TODO: Check for best device
-    _ = queue;
 
     var run_config = getRunConfig(allocator) catch |err| return getFatalErrorValue(err);
     defer run_config.deinit();
@@ -50,6 +42,35 @@ pub fn main() u8 {
     }
 
     return exit_success;
+}
+
+fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
+    const platforms = try clGetPlatforms(a);
+    defer a.free(platforms);
+    const platform = platforms[0];
+
+    const devices = try clGetDevices(a, platform);
+    defer a.free(devices);
+    defer for (devices, 0..) |array_device, i| if (i != 0) array_device.release();
+    const device = devices[0];
+
+    const context = try clGetContext(device);
+    errdefer context.release();
+
+    const queue = try clGetCommandQueue(context, device); // TODO: Check for best device
+
+    return .{
+        .platform = platform,
+        .device = device,
+        .context = context,
+        .queue = queue,
+    };
+}
+
+fn clFree(a: std.mem.Allocator, cl_bundle: ClBundle) void {
+    _ = a;
+    cl_bundle.device.release();
+    cl_bundle.context.release();
 }
 
 fn clGetPlatforms(a: std.mem.Allocator) HandledError![]const cl.PlatformId {
@@ -65,15 +86,15 @@ fn clGetPlatforms(a: std.mem.Allocator) HandledError![]const cl.PlatformId {
     return platforms;
 }
 
-fn clGetDevices(a: std.mem.Allocator, platforms: []const cl.PlatformId) HandledError![]const cl.DeviceId {
-    const devices = cl.getDeviceIds(a, platforms[0]) catch |err| switch (err) {
+fn clGetDevices(a: std.mem.Allocator, platform: cl.PlatformId) HandledError![]const cl.DeviceId {
+    const devices = cl.getDeviceIds(a, platform) catch |err| switch (err) {
         cl.ClError.InvalidPlatform => return printAndReturnError("Error: OpenCL platform is invalid!\n"),
         cl.ClError.DeviceNotFound => return printAndReturnError("Error: OpenCL device not found!\n"),
         cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL resources unavailable!\n"),
         cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
         else => return printAndReturnError("Error: OpenCL failed to get devices!\n"),
     };
-    errdefer a.free(devices); // TODO: Make this better
+    errdefer a.free(devices);
     errdefer for (devices) |device| device.release();
     if (devices.len < 1) {
         return printAndReturnError("Error: No OpenCL device found!\n");
@@ -81,8 +102,8 @@ fn clGetDevices(a: std.mem.Allocator, platforms: []const cl.PlatformId) HandledE
     return devices;
 }
 
-fn clGetContext(devices: []const cl.DeviceId) HandledError!cl.Context {
-    return cl.createContext(devices) catch |err| switch (err) {
+fn clGetContext(device: cl.DeviceId) HandledError!cl.Context {
+    return cl.createContext(device) catch |err| switch (err) {
         cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL value is invalid!\n"),
         cl.ClError.DeviceNotAvailable => return printAndReturnError("Error: OpenCL devices are unavailable!\n"),
         cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL resources unavailable!\n"),
@@ -112,14 +133,16 @@ fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
 }
 
 fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
+    const cl_bundle = try clInit(a);
+    defer clFree(a, cl_bundle);
     return switch (properties.source) {
-        .files => handleFiles(a, properties),
-        .stdin => handleStdin(a, properties.silent),
+        .files => handleFiles(a, properties, cl_bundle),
+        .stdin => handleStdin(a, properties.silent, cl_bundle),
         .none => printAndReturnError("Error: No source files provided!\n"),
     };
 }
 
-fn handleStdin(a: std.mem.Allocator, silent: bool) HandledError!void {
+fn handleStdin(a: std.mem.Allocator, silent: bool, cl_bundle: ClBundle) HandledError!void {
     const stdin = std.io.getStdIn().reader();
     const data = stdin.readAllAlloc(a, 1 << 30) catch |err| switch (err) {
         error.StreamTooLong => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
@@ -128,17 +151,17 @@ fn handleStdin(a: std.mem.Allocator, silent: bool) HandledError!void {
     };
     defer a.free(data);
 
-    handleData(a, data) catch |err| if (!silent) return err;
+    handleData(a, data, cl_bundle) catch |err| if (!silent) return err;
 }
 
-fn handleFiles(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
+fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
     var i: usize = 0;
     while (properties.getFile(i)) |file_name| : (i += 1) {
-        handleFile(a, file_name) catch |err| if (!properties.silent) return err;
+        handleFile(a, file_name, cl_bundle) catch |err| if (!properties.silent) return err;
     }
 }
 
-fn handleFile(a: std.mem.Allocator, file_name: []const u8) HandledError!void {
+fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle) HandledError!void {
     const cwd = std.fs.cwd();
     const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
         error.FileNotFound => return printAndReturnError("Error: File not found!\n"),
@@ -153,10 +176,10 @@ fn handleFile(a: std.mem.Allocator, file_name: []const u8) HandledError!void {
         else => return printAndReturnError("Error: Could not read input from file!\n"),
     };
     defer a.free(file_data);
-    try handleData(a, file_data);
+    try handleData(a, file_data, cl_bundle);
 }
 
-fn handleData(a: std.mem.Allocator, file_data: []const u8) HandledError!void {
+fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle) HandledError!void {
     var image = Image.init(a, file_data) catch |err| switch (err) {
         error.Unsupported => return printAndReturnError("Error: NetPBM type is not supported!\n"),
         error.WrongMagicNumber => return printAndReturnError("Error: File type is not supported!\n"),
@@ -167,6 +190,7 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8) HandledError!void {
     };
     defer image.deinit();
 
+    _ = cl_bundle;
     image.print() catch {}; // TODO: Replace with actual handling!
 }
 

@@ -119,13 +119,14 @@ pub const Context = extern struct {
 };
 
 /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateContext.html
-pub fn createContext(devices: []const DeviceId) !Context {
+pub fn createContext(device: DeviceId) !Context {
     var create_return: i32 = 0;
+    const device_ptr = &device;
     const context = Context{
         .this = cl.clCreateContext(
             null,
-            @truncate(devices.len),
-            @ptrCast(devices.ptr),
+            @truncate(1),
+            @ptrCast(device_ptr),
             null,
             null,
             &create_return,
