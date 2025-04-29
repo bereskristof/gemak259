@@ -15,6 +15,7 @@ pub const ClError = error{
     DeviceNotFound, // No OpenCL devices that matched device_type were found.
     InvalidValue, // Various invalid usage related errors
     DeviceNotAvailable, // Device in devices is currently not available
+    GenericError,
 };
 
 pub const PlatformId = extern struct {
@@ -178,3 +179,76 @@ pub fn createCommandQueue(context: Context, device: DeviceId) !CommandQueue {
         else => unreachable,
     };
 }
+
+pub const Program = extern struct {
+    this: cl.cl_program,
+
+    pub fn release(self: Program) void {
+        if (self.this) |this| {
+            _ = cl.clReleaseProgram(this);
+        }
+    }
+
+    /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clBuildProgram.html
+    pub fn build(self: *Program, device: DeviceId) !void {
+        const build_return: i32 = cl.clBuildProgram(
+            self.this,
+            1,
+            &device.this,
+            "-w -cl-std=CL3.0",
+            null,
+            null,
+        );
+        return switch (build_return) {
+            cl.CL_SUCCESS => {},
+            cl.CL_BUILD_PROGRAM_FAILURE => {
+                const stderr = std.io.getStdErr().writer();
+                stderr.print("OpenCL compile error!\n", .{}) catch {}; // TODO: Query the problem
+                return ClError.GenericError;
+            },
+            cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+            cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+            cl.CL_INVALID_DEVICE => ClError.InvalidDevice,
+            cl.CL_COMPILER_NOT_AVAILABLE => ClError.GenericError,
+            cl.CL_INVALID_OPERATION => ClError.GenericError,
+            else => unreachable,
+        };
+    }
+};
+
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateProgramWithSource.html
+pub fn createProgramWithSource(context: Context, source: []const u8) !Program {
+    var create_return: i32 = 0;
+    const program = Program{
+        .this = cl.clCreateProgramWithSource(
+            context.this,
+            1,
+            @ptrCast(@constCast(&source.ptr)),
+            null,
+            &create_return,
+        ),
+    };
+    return switch (create_return) {
+        cl.CL_SUCCESS => program,
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        else => unreachable,
+    };
+}
+
+// pub const Kernel = extern struct {
+//     this: cl.cl_kernel,
+
+//     pub fn release(self: Kernel) void {
+//         if (self.this) |this| {
+//             _ = cl.clReleaseKernel(this);
+//         }
+//     }
+// };
+
+// pub fn createKernel() !Kernel {
+//     var create_return: i32 = 0;
+//     const kernel = Kernel{
+//         .this = cl.clCreateKernel(program: cl_program, kernel_name: [*c]const u8, errcode_ret: [*c]cl_int,),
+//     };
+// }

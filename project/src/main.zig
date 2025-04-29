@@ -11,6 +11,7 @@ const exit_complete_failure = 2;
 const help_text = @embedFile("help_text.txt");
 const name = build_config.name;
 const version = build_config.version;
+const cl_source: [:0]const u8 = @embedFile("gauss.cl");
 
 // Used when a fatal error occured, and the user was already notified about the error.
 const HandledError = error{
@@ -123,6 +124,14 @@ fn clGetCommandQueue(context: cl.Context, device: cl.DeviceId) HandledError!cl.C
     };
 }
 
+fn clGetProgram(context: cl.Context) HandledError!cl.Program {
+    return cl.createProgramWithSource(context, cl_source) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        else => return printAndReturnError("Error: Failed to create OpenCL program!\n"),
+    };
+}
+
 fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
     return args.Properties.init(a) catch |err| switch (err) {
         args.ArgError.ConflictingInputs => return printAndReturnError("Error: '-i' and 'FILE...' are mutually exclusive!\n"),
@@ -135,6 +144,10 @@ fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
 fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
     const cl_bundle = try clInit(a);
     defer clFree(a, cl_bundle);
+    var cl_program = try clGetProgram(cl_bundle.context);
+    defer cl_program.release();
+    cl_program.build(cl_bundle.device) catch return printAndReturnError("Error: Failed to build program!\n");
+
     return switch (properties.source) {
         .files => handleFiles(a, properties, cl_bundle),
         .stdin => handleStdin(a, properties.silent, cl_bundle),
