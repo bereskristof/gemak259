@@ -24,6 +24,13 @@ pub const PlatformId = extern struct {
     this: cl.cl_platform_id,
 };
 
+pub const mem_read_write: u64 = cl.CL_MEM_READ_WRITE;
+pub const mem_write_only: u64 = cl.CL_MEM_WRITE_ONLY;
+pub const mem_read_only: u64 = cl.CL_MEM_READ_ONLY;
+pub const mem_use_host_ptr: u64 = cl.CL_MEM_USE_HOST_PTR;
+pub const mem_alloc_host_ptr: u64 = cl.CL_MEM_ALLOC_HOST_PTR;
+pub const mem_copy_host_ptr: u64 = cl.CL_MEM_COPY_HOST_PTR;
+
 /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clGetPlatformIDs.html
 pub fn getPlatformIds(a: Allocator) ![]const PlatformId {
     var num_platform: u32 = 0;
@@ -265,5 +272,58 @@ pub fn createKernel(program: Program, kernel_name: [:0]const u8) !Kernel {
         cl.CL_INVALID_KERNEL_NAME, cl.CL_INVALID_KERNEL_DEFINITION => ClError.InvalidKernelName,
         cl.CL_INVALID_PROGRAM_EXECUTABLE => ClError.InvalidProgramExecutable,
         else => unreachable,
+    };
+}
+
+pub const ImageDesc = struct {
+    this: cl.cl_image_desc = .{
+        .image_type = cl.CL_MEM_OBJECT_IMAGE2D,
+        .image_width = 20,
+        .image_height = 20,
+        .image_depth = 0,
+        .image_array_size = 0,
+        .image_row_pitch = 0,
+        .image_slice_pitch = 0,
+        .num_mip_levels = 0,
+        .num_samples = 0,
+        .unnamed_0 = .{ .mem_object = null },
+    },
+};
+
+pub const Mem = extern struct {
+    this: cl.cl_mem,
+
+    pub fn release(self: Mem) void {
+        if (self.this) |this| {
+            _ = cl.clReleaseMemObject(this);
+        }
+    }
+};
+
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateImageWithProperties.html
+pub fn createImage(context: Context, mem_flags: u64, image_desc: ImageDesc, data: []const u8) !Mem {
+    var create_return: i32 = 0;
+    const image = Mem{
+        .this = cl.clCreateImage(
+            context.this,
+            mem_flags,
+            &cl.cl_image_format{
+                .image_channel_order = cl.CL_RGB,
+                .image_channel_data_type = cl.CL_UNORM_INT8,
+            },
+            &image_desc.this,
+            @ptrCast(@constCast(data.ptr)),
+            &create_return,
+        ),
+    };
+    return switch (create_return) {
+        cl.CL_SUCCESS => image,
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        else => {
+            std.debug.print("CLERR: {d}\n", .{create_return});
+            return ClError.GenericError;
+        },
+        // else => unreachable,
     };
 }

@@ -19,12 +19,7 @@ const HandledError = error{
     FatalMessageFailed,
 };
 
-const ClBundle = struct {
-    platform: cl.PlatformId,
-    device: cl.DeviceId,
-    context: cl.Context,
-    queue: cl.CommandQueue,
-};
+const ClBundle = struct { platform: cl.PlatformId, device: cl.DeviceId, context: cl.Context, queue: cl.CommandQueue, program: cl.Program };
 
 pub fn main() u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -66,18 +61,28 @@ fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
 
     const queue = try clGetCommandQueue(context, device); // TODO: Check for best device
 
+    var program = try clGetProgram(context);
+    errdefer program.release();
+    program.build(device) catch |err| switch (err) {
+        cl.ClError.PlatformNotFound => return printAndReturnError("Error: OpenCL platform not found!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        else => return printAndReturnError("Error: OpenCL failed to build!\n"),
+    };
+
     return .{
         .platform = platform,
         .device = device,
         .context = context,
         .queue = queue,
+        .program = program,
     };
 }
 
 fn clFree(a: std.mem.Allocator, cl_bundle: ClBundle) void {
-    _ = a;
+    _ = a; // TODO
     cl_bundle.device.release();
     cl_bundle.context.release();
+    cl_bundle.program.release();
 }
 
 fn clGetPlatforms(a: std.mem.Allocator) HandledError![]const cl.PlatformId {
@@ -148,6 +153,17 @@ fn clGetKernel(program: cl.Program, kernel_name: [:0]const u8) HandledError!cl.K
     };
 }
 
+fn clCreateImage(context: cl.Context, data: []const u8, width: u64, height: u64) HandledError!cl.Mem {
+    var image_desc = cl.ImageDesc{};
+    image_desc.this.image_width = width;
+    image_desc.this.image_height = height;
+    return cl.createImage(context, cl.mem_read_write | cl.mem_copy_host_ptr, image_desc, data) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        else => return printAndReturnError("Error: Failed to create OpenCL image!\n"),
+    };
+}
+
 fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
     return args.Properties.init(a) catch |err| switch (err) {
         args.ArgError.ConflictingInputs => return printAndReturnError("Error: '-i' and 'FILE...' are mutually exclusive!\n"),
@@ -161,11 +177,6 @@ fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!
     var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
     const cl_bundle = try clInit(a);
     defer clFree(a, cl_bundle);
-    var cl_program = try clGetProgram(cl_bundle.context);
-    defer cl_program.release();
-    cl_program.build(cl_bundle.device) catch return printAndReturnError("Error: Failed to build program!\n");
-    var cl_kernel = try clGetKernel(cl_program, "gaussBlur");
-    defer cl_kernel.release();
     if (cl_init_timer) |*timer| {
         const runtime = timer.read();
         const stderr = std.io.getStdErr().writer();
@@ -227,7 +238,12 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle) 
     };
     defer image.deinit();
 
-    _ = cl_bundle;
+    const cl_kernel = try clGetKernel(cl_bundle.program, "gaussBlur"); // TODO
+    defer cl_kernel.release();
+
+    const cl_image = try clCreateImage(cl_bundle.context, image.data, image.image_info.width, image.image_info.height);
+    defer cl_image.release();
+
     image.print() catch {}; // TODO: Replace with actual handling!
 }
 
