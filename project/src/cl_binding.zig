@@ -15,6 +15,8 @@ pub const ClError = error{
     DeviceNotFound, // No OpenCL devices that matched device_type were found.
     InvalidValue, // Various invalid usage related errors
     DeviceNotAvailable, // Device in devices is currently not available
+    InvalidKernelName,
+    InvalidProgramExecutable,
     GenericError,
 };
 
@@ -236,19 +238,32 @@ pub fn createProgramWithSource(context: Context, source: []const u8) !Program {
     };
 }
 
-// pub const Kernel = extern struct {
-//     this: cl.cl_kernel,
+pub const Kernel = extern struct {
+    this: cl.cl_kernel,
 
-//     pub fn release(self: Kernel) void {
-//         if (self.this) |this| {
-//             _ = cl.clReleaseKernel(this);
-//         }
-//     }
-// };
+    pub fn release(self: Kernel) void {
+        if (self.this) |this| {
+            _ = cl.clReleaseKernel(this);
+        }
+    }
+};
 
-// pub fn createKernel() !Kernel {
-//     var create_return: i32 = 0;
-//     const kernel = Kernel{
-//         .this = cl.clCreateKernel(program: cl_program, kernel_name: [*c]const u8, errcode_ret: [*c]cl_int,),
-//     };
-// }
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateKernel.html
+pub fn createKernel(program: Program, kernel_name: [:0]const u8) !Kernel {
+    var create_return: i32 = 0;
+    const kernel = Kernel{
+        .this = cl.clCreateKernel(
+            program.this,
+            kernel_name,
+            &create_return,
+        ),
+    };
+    return switch (create_return) {
+        cl.CL_SUCCESS => kernel,
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        cl.CL_INVALID_KERNEL_NAME, cl.CL_INVALID_KERNEL_DEFINITION => ClError.InvalidKernelName,
+        cl.CL_INVALID_PROGRAM_EXECUTABLE => ClError.InvalidProgramExecutable,
+        else => unreachable,
+    };
+}

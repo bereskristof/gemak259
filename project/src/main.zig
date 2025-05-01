@@ -11,7 +11,7 @@ const exit_complete_failure = 2;
 const help_text = @embedFile("help_text.txt");
 const name = build_config.name;
 const version = build_config.version;
-const cl_source: [:0]const u8 = @embedFile("gauss.cl");
+const cl_source: [:0]const u8 = @embedFile("kernel.cl");
 
 // Used when a fatal error occured, and the user was already notified about the error.
 const HandledError = error{
@@ -32,14 +32,20 @@ pub fn main() u8 {
     const allocator = gpa.allocator();
 
     const stdout = std.io.getStdOut().writer();
+    const stderr = std.io.getStdErr().writer();
 
     var run_config = getRunConfig(allocator) catch |err| return getFatalErrorValue(err);
     defer run_config.deinit();
 
+    var complete_timer: ?std.time.Timer = if (run_config.timed) std.time.Timer.start() catch null else null;
     switch (run_config.tool) {
         .Default, .Help => stdout.print(help_text, .{name}) catch return exit_complete_failure,
         .Version => stdout.print("{s}\n", .{version}) catch return exit_complete_failure,
         else => _ = handleInputs(allocator, run_config) catch |err| return getFatalErrorValue(err),
+    }
+    if (complete_timer) |*timer| {
+        const runtime = timer.read();
+        stderr.print("Complete runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
     }
 
     return exit_success;
@@ -132,6 +138,16 @@ fn clGetProgram(context: cl.Context) HandledError!cl.Program {
     };
 }
 
+fn clGetKernel(program: cl.Program, kernel_name: [:0]const u8) HandledError!cl.Kernel {
+    return cl.createKernel(program, kernel_name) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        cl.ClError.InvalidKernelName => return printAndReturnError("Error: Kernel name is invalid!\n"),
+        cl.ClError.InvalidProgramExecutable => return printAndReturnError("Error: There is no successfully built executable for program!\n"),
+        else => return printAndReturnError("Error: Failed to create OpenCL kernel!\n"),
+    };
+}
+
 fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
     return args.Properties.init(a) catch |err| switch (err) {
         args.ArgError.ConflictingInputs => return printAndReturnError("Error: '-i' and 'FILE...' are mutually exclusive!\n"),
@@ -142,11 +158,19 @@ fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
 }
 
 fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
+    var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
     const cl_bundle = try clInit(a);
     defer clFree(a, cl_bundle);
     var cl_program = try clGetProgram(cl_bundle.context);
     defer cl_program.release();
     cl_program.build(cl_bundle.device) catch return printAndReturnError("Error: Failed to build program!\n");
+    var cl_kernel = try clGetKernel(cl_program, "gaussBlur");
+    defer cl_kernel.release();
+    if (cl_init_timer) |*timer| {
+        const runtime = timer.read();
+        const stderr = std.io.getStdErr().writer();
+        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+    }
 
     return switch (properties.source) {
         .files => handleFiles(a, properties, cl_bundle),

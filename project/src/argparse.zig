@@ -43,6 +43,7 @@ pub const Properties = struct {
     kernsel_size: u8,
     tool: Tool,
     silent: bool,
+    timed: bool,
 
     pub fn init(allocator: std.mem.Allocator) ArgError!This {
         var props = Properties{
@@ -53,6 +54,7 @@ pub const Properties = struct {
             .kernsel_size = 5,
             .tool = .Default,
             .silent = false,
+            .timed = false,
         };
         errdefer props.deinit();
         std.mem.copyForwards(u8, props.output_dir, "./");
@@ -129,6 +131,10 @@ pub const Properties = struct {
         self.silent = true;
     }
 
+    fn setTimed(self: *This) void {
+        self.timed = true;
+    }
+
     fn parseArgs(self: *This) ArgError!void {
         var args = std.process.argsWithAllocator(self.allocator) catch {
             return ArgError.AllocationError;
@@ -166,6 +172,7 @@ pub const Properties = struct {
                 'v' => self.setTool(.Version),
                 'i' => try self.setStdin(),
                 'f' => self.setSilent(),
+                't' => self.setTimed(),
                 'o', 'k' => return i,
                 else => return ArgError.UnknownArgument,
             }

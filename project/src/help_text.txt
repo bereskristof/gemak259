@@ -14,6 +14,7 @@ Options:
   -v       Prints the programs version.
   -i       Reads the contents from stdin instead of FILEs.
   -o DIR   Specifies the output directory.
+  -t       Print runtime information.
   -f       Continues skipping the file if some error occures.
   -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd
            positive value.
