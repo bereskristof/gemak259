@@ -157,7 +157,9 @@ fn clCreateImage(context: cl.Context, data: []const u8, width: u64, height: u64)
     var image_desc = cl.ImageDesc{};
     image_desc.this.image_width = width;
     image_desc.this.image_height = height;
-    return cl.createImage(context, cl.mem_read_write | cl.mem_copy_host_ptr, image_desc, data) catch |err| switch (err) {
+    image_desc.this.image_row_pitch = width * 3;
+    image_desc.this.image_slice_pitch = width * height * 3;
+    return cl.createImage(context, cl.mem_read_write | cl.mem_use_host_ptr, image_desc, data) catch |err| switch (err) {
         cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
         cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
         else => return printAndReturnError("Error: Failed to create OpenCL image!\n"),
@@ -173,6 +175,33 @@ fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
     };
 }
 
+fn setMemKernelArg(kernel: cl.Kernel, index: u32, value: cl.Mem) HandledError!void {
+    return cl.setMemKernelArg(kernel, index, value) catch |err| switch (err) {
+        cl.ClError.InvalidKernel => return printAndReturnError("Error: OpenCL kernel is invalid!\n"),
+        cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL value is invalid!\n"),
+        else => return printAndReturnError("Error: Failed to set OpenCL kernel argument!\n"),
+    };
+}
+
+fn setU32KernelArg(kernel: cl.Kernel, index: u32, value: u32) HandledError!void {
+    return cl.setU32KernelArg(kernel, index, value) catch |err| switch (err) {
+        cl.ClError.InvalidKernel => return printAndReturnError("Error: OpenCL kernel is invalid!\n"),
+        cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL value is invalid!\n"),
+        else => return printAndReturnError("Error: Failed to set OpenCL kernel argument!\n"),
+    };
+}
+
+fn enqueueNDRangeKernel(queue: cl.CommandQueue, kernel: cl.Kernel, global_work_size: []const u64) HandledError!void {
+    return cl.enqueueNDRangeKernel(queue, kernel, global_work_size) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        cl.ClError.InvalidCommandQueue => return printAndReturnError("Error: OpenCL command queue is invalid!\n"),
+        cl.ClError.InvalidKernel => return printAndReturnError("Error: OpenCL kernel is invalid!\n"),
+        cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL work group or item is invalid!\n"),
+        else => return printAndReturnError("Error: Failed to enqueue OpenCL kernel!\n"),
+    };
+}
+
 fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
     var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
     const cl_bundle = try clInit(a);
@@ -184,13 +213,13 @@ fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!
     }
 
     return switch (properties.source) {
-        .files => handleFiles(a, properties, cl_bundle),
-        .stdin => handleStdin(a, properties.silent, cl_bundle),
+        .files => handleFiles(a, properties, cl_bundle, properties.kernel_size),
+        .stdin => handleStdin(a, properties.silent, cl_bundle, properties.kernel_size),
         .none => printAndReturnError("Error: No source files provided!\n"),
     };
 }
 
-fn handleStdin(a: std.mem.Allocator, silent: bool, cl_bundle: ClBundle) HandledError!void {
+fn handleStdin(a: std.mem.Allocator, silent: bool, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
     const stdin = std.io.getStdIn().reader();
     const data = stdin.readAllAlloc(a, 1 << 30) catch |err| switch (err) {
         error.StreamTooLong => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
@@ -199,17 +228,17 @@ fn handleStdin(a: std.mem.Allocator, silent: bool, cl_bundle: ClBundle) HandledE
     };
     defer a.free(data);
 
-    handleData(a, data, cl_bundle) catch |err| if (!silent) return err;
+    handleData(a, data, cl_bundle, kernel_size) catch |err| if (!silent) return err;
 }
 
-fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
+fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
     var i: usize = 0;
     while (properties.getFile(i)) |file_name| : (i += 1) {
-        handleFile(a, file_name, cl_bundle) catch |err| if (!properties.silent) return err;
+        handleFile(a, file_name, cl_bundle, kernel_size) catch |err| if (!properties.silent) return err;
     }
 }
 
-fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle) HandledError!void {
+fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
     const cwd = std.fs.cwd();
     const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
         error.FileNotFound => return printAndReturnError("Error: File not found!\n"),
@@ -224,10 +253,10 @@ fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle) 
         else => return printAndReturnError("Error: Could not read input from file!\n"),
     };
     defer a.free(file_data);
-    try handleData(a, file_data, cl_bundle);
+    try handleData(a, file_data, cl_bundle, kernel_size);
 }
 
-fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle) HandledError!void {
+fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
     var image = Image.init(a, file_data) catch |err| switch (err) {
         error.Unsupported => return printAndReturnError("Error: NetPBM type is not supported!\n"),
         error.WrongMagicNumber => return printAndReturnError("Error: File type is not supported!\n"),
@@ -243,6 +272,12 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle) 
 
     const cl_image = try clCreateImage(cl_bundle.context, image.data, image.image_info.width, image.image_info.height);
     defer cl_image.release();
+
+    try setMemKernelArg(cl_kernel, 0, cl_image);
+    try setU32KernelArg(cl_kernel, 1, kernel_size);
+
+    const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
+    try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
 
     image.print() catch {}; // TODO: Replace with actual handling!
 }

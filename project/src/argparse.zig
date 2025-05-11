@@ -40,7 +40,7 @@ pub const Properties = struct {
         none,
     },
     output_dir: []u8,
-    kernsel_size: u8,
+    kernel_size: u8,
     tool: Tool,
     silent: bool,
     timed: bool,
@@ -51,7 +51,7 @@ pub const Properties = struct {
             .mem_source = null,
             .source = .{ .none = {} },
             .output_dir = allocator.alloc(u8, 2) catch return ArgError.AllocationError,
-            .kernsel_size = 5,
+            .kernel_size = 5,
             .tool = .Default,
             .silent = false,
             .timed = false,
@@ -116,7 +116,7 @@ pub const Properties = struct {
     fn setKernelSize(self: *This, k_str: []const u8) ArgError!void {
         const k = std.fmt.parseUnsigned(u8, k_str, 10) catch return ArgError.UnknownArgument;
         if (k % 2 == 0) return ArgError.InvalidInput;
-        self.kernsel_size = k;
+        self.kernel_size = k;
     }
 
     fn setTool(self: *This, tool: Tool) void {
@@ -217,7 +217,7 @@ pub const Properties = struct {
             .none => std.debug.print("Source: null\n", .{}),
         }
         std.debug.print("Output dir: {s}\n", .{self.output_dir});
-        std.debug.print("Kernel: {}\n", .{self.kernsel_size});
+        std.debug.print("Kernel: {}\n", .{self.kernel_size});
         std.debug.print("Tool: {s}\n", .{@tagName(self.tool)});
         std.debug.print("Silent: {}\n", .{self.silent});
     }

@@ -1,9 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const cl = @cImport(
-    @cInclude("../include/CL/opencl.h"),
-);
+const cl = @cImport({
+    // @cInclude("../include/pragma.h");
+    @cInclude("../include/CL/opencl.h");
+});
 
 pub const ClError = error{
     OutOfMemory, // The host could not allocate the resources
@@ -17,6 +18,8 @@ pub const ClError = error{
     DeviceNotAvailable, // Device in devices is currently not available
     InvalidKernelName,
     InvalidProgramExecutable,
+    InvalidKernel,
+    InvalidCommandQueue,
     GenericError,
 };
 
@@ -280,8 +283,8 @@ pub const ImageDesc = struct {
         .image_type = cl.CL_MEM_OBJECT_IMAGE2D,
         .image_width = 20,
         .image_height = 20,
-        .image_depth = 0,
-        .image_array_size = 0,
+        .image_depth = 1,
+        .image_array_size = 1,
         .image_row_pitch = 0,
         .image_slice_pitch = 0,
         .num_mip_levels = 0,
@@ -325,5 +328,75 @@ pub fn createImage(context: Context, mem_flags: u64, image_desc: ImageDesc, data
             return ClError.GenericError;
         },
         // else => unreachable,
+    };
+}
+
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clSetKernelArg.html
+pub fn setMemKernelArg(self: Kernel, index: u32, arg_value: Mem) !void {
+    const set_return: i32 = cl.clSetKernelArg(
+        self.this,
+        index,
+        @sizeOf(Mem),
+        @ptrCast(&arg_value.this),
+    );
+    return switch (set_return) {
+        cl.CL_SUCCESS => {},
+        cl.CL_INVALID_KERNEL => ClError.InvalidKernel,
+        cl.CL_INVALID_VALUE => ClError.InvalidValue,
+        cl.CL_INVALID_MEM_OBJECT => ClError.InvalidValue,
+        else => unreachable,
+    };
+}
+
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clSetKernelArg.html
+pub fn setU32KernelArg(self: Kernel, index: u32, arg_value: u32) !void {
+    const set_return: i32 = cl.clSetKernelArg(
+        self.this,
+        index,
+        @sizeOf(u32),
+        @ptrCast(&arg_value),
+    );
+    return switch (set_return) {
+        cl.CL_SUCCESS => {},
+        cl.CL_INVALID_KERNEL => ClError.InvalidKernel,
+        cl.CL_INVALID_VALUE => ClError.InvalidValue,
+        cl.CL_INVALID_MEM_OBJECT => ClError.InvalidValue,
+        else => unreachable,
+    };
+}
+
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clEnqueueNDRangeKernel.html
+pub fn enqueueNDRangeKernel(
+    queue: CommandQueue,
+    kernel: Kernel,
+    global_work_size: []const u64,
+) !void {
+    const calculated_global_work_size: [2]usize = [_]usize{ 64, 64 };
+    const local_work_size: [2]usize = [_]usize{ 32, 32 };
+    std.debug.print("Size: {} {}\n", .{ calculated_global_work_size[0], calculated_global_work_size[1] });
+    const enqueue_return: i32 = cl.clEnqueueNDRangeKernel(
+        queue.this,
+        kernel.this,
+        @intCast(global_work_size.len),
+        null,
+        @ptrCast(@constCast(&calculated_global_work_size)),
+        @ptrCast(@constCast(&local_work_size)), // TODO: Replace these with calculated values
+        0,
+        null,
+        null,
+    );
+    return switch (enqueue_return) {
+        cl.CL_SUCCESS => {},
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        cl.CL_INVALID_COMMAND_QUEUE => ClError.InvalidCommandQueue,
+        cl.CL_INVALID_KERNEL => ClError.InvalidKernel,
+        cl.CL_INVALID_WORK_GROUP_SIZE => ClError.InvalidValue,
+        cl.CL_INVALID_WORK_ITEM_SIZE => ClError.InvalidValue,
+        cl.CL_INVALID_VALUE => ClError.InvalidValue,
+        else => {
+            std.debug.print("CLERR: {d}\n", .{enqueue_return});
+            return ClError.GenericError;
+        },
     };
 }
