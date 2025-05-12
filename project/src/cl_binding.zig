@@ -395,16 +395,16 @@ pub fn enqueueNDRangeKernel(
     kernel: Kernel,
     global_work_size: []const u64,
 ) !void {
-    const calculated_global_work_size: [2]usize = [_]usize{ 64, 64 };
-    const local_work_size: [2]usize = [_]usize{ 32, 32 };
-    std.debug.print("Size: {} {}\n", .{ calculated_global_work_size[0], calculated_global_work_size[1] });
+    const calculated_global_work_size: [2]usize = [_]usize{ nextPowerOfTwo(global_work_size[0]), nextPowerOfTwo(global_work_size[1]) };
+    std.log.debug("{} {}\n", .{ calculated_global_work_size[0], calculated_global_work_size[1] });
+    const local_work_size: [2]usize = [_]usize{ 32, 32 }; // TODO: Replace with system based value
     const enqueue_return: i32 = cl.clEnqueueNDRangeKernel(
         queue.this,
         kernel.this,
         @intCast(global_work_size.len),
         null,
         @ptrCast(@constCast(&calculated_global_work_size)),
-        @ptrCast(@constCast(&local_work_size)), // TODO: Replace these with calculated values
+        @ptrCast(@constCast(&local_work_size)),
         0,
         null,
         null,
@@ -423,6 +423,16 @@ pub fn enqueueNDRangeKernel(
             return ClError.GenericError;
         },
     };
+}
+
+fn nextPowerOfTwo(x: usize) usize {
+    var i: usize = x;
+    var l: u6 = 1;
+    for (0..7) |_| {
+        i |= i >> l;
+        l *|= 2;
+    }
+    return i + 1;
 }
 
 pub fn enqueueReadBuffer(

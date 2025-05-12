@@ -118,6 +118,16 @@ pub fn cloneWithData(self: This, new_data: []const u8) !This {
     };
 }
 
+pub fn exportToFile(self: This, out: std.fs.File) !void {
+    const writer = out.writer();
+    writer.print("P6\n{d} {d}\n{d}\n", .{
+        self.image_info.width,
+        self.image_info.height,
+        self.image_info.white_value,
+    }) catch return UnsupportedFileError.DamagedData;
+    writer.writeAll(self.data) catch return UnsupportedFileError.DamagedData;
+}
+
 pub fn print(self: This) !void {
     const stderr = std.io.getStdErr();
     const out = stderr.writer();

@@ -59,7 +59,7 @@ fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
     const context = try clGetContext(device);
     errdefer context.release();
 
-    const queue = try clGetCommandQueue(context, device); // TODO: Check for best device
+    const queue = try clGetCommandQueue(context, device);
 
     var program = try clGetProgram(context);
     errdefer program.release();
@@ -75,6 +75,127 @@ fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
         .context = context,
         .queue = queue,
         .program = program,
+    };
+}
+
+fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
+    var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
+    const cl_bundle = try clInit(a);
+    defer clFree(a, cl_bundle);
+    if (cl_init_timer) |*timer| {
+        const runtime = timer.read();
+        const stderr = std.io.getStdErr().writer();
+        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+    }
+
+    return switch (properties.source) {
+        .files => handleFiles(a, properties, cl_bundle),
+        .stdin => handleStdin(a, properties, cl_bundle),
+        .none => printAndReturnError("Error: No source files provided!\n"),
+    };
+}
+
+fn handleStdin(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
+    const stdin = std.io.getStdIn().reader();
+    const data = stdin.readAllAlloc(a, 1 << 30) catch |err| switch (err) {
+        error.StreamTooLong => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
+        error.OutOfMemory => return printAndReturnError("Error: Out of memory!\n"),
+        else => return printAndReturnError("Error: Could not read input from file!\n"),
+    };
+    defer a.free(data);
+
+    handleData(a, data, cl_bundle, properties, 0) catch |err| if (!properties.silent) return err;
+}
+
+fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
+    var i: usize = 0;
+    while (properties.getFile(i)) |file_name| : (i += 1) {
+        handleFile(a, file_name, cl_bundle, properties, i) catch |err| if (!properties.silent) return err;
+    }
+}
+
+fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle, properties: args.Properties, num: usize) HandledError!void {
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
+        error.FileNotFound => return printAndReturnError("Error: File not found!\n"),
+        error.AccessDenied => return printAndReturnError("Error: Access to file is denied!\n"),
+        else => return printAndReturnError("Error: Unknown file access error!\n"),
+    };
+    defer file.close();
+
+    const file_data = file.readToEndAlloc(a, 1 << 30) catch |err| switch (err) {
+        error.FileTooBig => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
+        error.OutOfMemory => return printAndReturnError("Error: Out of memory!\n"),
+        else => return printAndReturnError("Error: Could not read input from file!\n"),
+    };
+    defer a.free(file_data);
+    try handleData(a, file_data, cl_bundle, properties, num);
+}
+
+fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, properties: args.Properties, num: usize) HandledError!void {
+    var image = Image.init(a, file_data) catch |err| switch (err) {
+        error.Unsupported => return printAndReturnError("Error: NetPBM type is not supported!\n"),
+        error.WrongMagicNumber => return printAndReturnError("Error: File type is not supported!\n"),
+        error.CorruptedHeaderData => return printAndReturnError("Error: Could not read header!\n"),
+        error.OutOfMemory => return printAndReturnError("Error: Memory allocation failed!\n"),
+        error.UnreadableString => return printAndReturnError("Error: File data portion is corrupted!\n"),
+        error.DamagedData => return printAndReturnError("Error: File data portion is corrupted!\n"),
+        else => unreachable,
+    };
+    defer image.deinit();
+
+    const kernel_name = switch (properties.tool) {
+        .Blur => "boxBlur",
+        .Gauss => "gaussianBlur",
+        .Median => "medianMethod",
+        else => unreachable,
+    };
+
+    const cl_kernel = try clGetKernel(cl_bundle.program, kernel_name); // TODO
+    defer cl_kernel.release();
+
+    const cl_image = try clCreateBuffer(cl_bundle.context, image.data);
+    defer cl_image.release();
+
+    const cl_target = try clCreateBuffer(cl_bundle.context, image.data);
+    defer cl_target.release();
+
+    try setMemKernelArg(cl_kernel, 0, cl_image);
+    try setMemKernelArg(cl_kernel, 1, cl_target);
+    try setU32KernelArg(cl_kernel, 2, properties.kernel_size);
+    try setU32KernelArg(cl_kernel, 3, @intCast(image.image_info.width));
+    try setU32KernelArg(cl_kernel, 4, @intCast(image.image_info.height));
+
+    const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
+    try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
+    const modified_data = try enqueueReadBuffer(a, cl_bundle.queue, cl_target, image.data.len);
+    defer a.free(modified_data);
+
+    const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
+        Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
+        else => unreachable,
+    };
+    defer new_image.deinit();
+
+    const out_file_name = std.fmt.allocPrint(a, "{s}/{d}.ppm", .{ properties.output_dir, num }) catch
+        return printAndReturnError("Error: Could not create output file name!\n");
+    defer a.free(out_file_name);
+    std.fs.cwd().makePath(properties.output_dir) catch return printAndReturnError("Error: Could not create target directory!\n");
+    const out_file = std.fs.cwd().createFile(out_file_name, .{}) catch |err| switch (err) {
+        error.AccessDenied => return printAndReturnError("Error: Access to file is denied!\n"),
+        else => return printAndReturnError("Error: Unknown file access error!\n"),
+    };
+    defer out_file.close();
+    new_image.exportToFile(out_file) catch |err| switch (err) {
+        Image.UnsupportedFileError.DamagedData => return printAndReturnError("Error: Could not export data to file!\n"),
+        else => unreachable,
+    };
+}
+
+fn getFatalErrorValue(err: HandledError) u8 {
+    return switch (err) {
+        HandledError.Fatal => 1,
+        HandledError.FatalMessageFailed => 2,
     };
 }
 
@@ -153,19 +274,6 @@ fn clGetKernel(program: cl.Program, kernel_name: [:0]const u8) HandledError!cl.K
     };
 }
 
-fn clCreateImage(context: cl.Context, data: []const u8, width: u64, height: u64) HandledError!cl.Mem {
-    var image_desc = cl.ImageDesc{};
-    image_desc.this.image_width = width;
-    image_desc.this.image_height = height;
-    image_desc.this.image_row_pitch = width * 3;
-    image_desc.this.image_slice_pitch = width * height * 3;
-    return cl.createImage(context, cl.mem_read_write | cl.mem_use_host_ptr, image_desc, data) catch |err| switch (err) {
-        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
-        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
-        else => return printAndReturnError("Error: Failed to create OpenCL image!\n"),
-    };
-}
-
 fn clCreateBuffer(context: cl.Context, data: []const u8) HandledError!cl.Mem {
     return cl.createBuffer(context, cl.mem_read_write | cl.mem_copy_host_ptr, data) catch |err| switch (err) {
         cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
@@ -217,104 +325,6 @@ fn enqueueReadBuffer(a: std.mem.Allocator, queue: cl.CommandQueue, buffer: cl.Me
         cl.ClError.InvalidCommandQueue => return printAndReturnError("Error: OpenCL command queue is invalid!\n"),
         cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL memory object or value is invalid!\n"),
         else => return printAndReturnError("Error: Failed to enqueue OpenCL read buffer!\n"),
-    };
-}
-
-fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
-    var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
-    const cl_bundle = try clInit(a);
-    defer clFree(a, cl_bundle);
-    if (cl_init_timer) |*timer| {
-        const runtime = timer.read();
-        const stderr = std.io.getStdErr().writer();
-        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
-    }
-
-    return switch (properties.source) {
-        .files => handleFiles(a, properties, cl_bundle, properties.kernel_size),
-        .stdin => handleStdin(a, properties.silent, cl_bundle, properties.kernel_size),
-        .none => printAndReturnError("Error: No source files provided!\n"),
-    };
-}
-
-fn handleStdin(a: std.mem.Allocator, silent: bool, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
-    const stdin = std.io.getStdIn().reader();
-    const data = stdin.readAllAlloc(a, 1 << 30) catch |err| switch (err) {
-        error.StreamTooLong => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
-        error.OutOfMemory => return printAndReturnError("Error: Out of memory!\n"),
-        else => return printAndReturnError("Error: Could not read input from file!\n"),
-    };
-    defer a.free(data);
-
-    handleData(a, data, cl_bundle, kernel_size) catch |err| if (!silent) return err;
-}
-
-fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
-    var i: usize = 0;
-    while (properties.getFile(i)) |file_name| : (i += 1) {
-        handleFile(a, file_name, cl_bundle, kernel_size) catch |err| if (!properties.silent) return err;
-    }
-}
-
-fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
-    const cwd = std.fs.cwd();
-    const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
-        error.FileNotFound => return printAndReturnError("Error: File not found!\n"),
-        error.AccessDenied => return printAndReturnError("Error: Access to file is denied!\n"),
-        else => return printAndReturnError("Error: Unknown file access error!\n"), // TODO: Add more of these, since they are no longer bubbled to the top
-    };
-    defer file.close();
-
-    const file_data = file.readToEndAlloc(a, 1 << 30) catch |err| switch (err) {
-        error.FileTooBig => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
-        error.OutOfMemory => return printAndReturnError("Error: Out of memory!\n"),
-        else => return printAndReturnError("Error: Could not read input from file!\n"),
-    };
-    defer a.free(file_data);
-    try handleData(a, file_data, cl_bundle, kernel_size);
-}
-
-fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, kernel_size: u8) HandledError!void {
-    var image = Image.init(a, file_data) catch |err| switch (err) {
-        error.Unsupported => return printAndReturnError("Error: NetPBM type is not supported!\n"),
-        error.WrongMagicNumber => return printAndReturnError("Error: File type is not supported!\n"),
-        error.CorruptedHeaderData => return printAndReturnError("Error: Could not read header!\n"),
-        error.OutOfMemory => return printAndReturnError("Error: Memory allocation failed!\n"),
-        error.UnreadableString => return printAndReturnError("Error: File data portion is corrupted!\n"),
-        error.DamagedData => return printAndReturnError("Error: File data portion is corrupted!\n"),
-        else => unreachable,
-    };
-    defer image.deinit();
-
-    const cl_kernel = try clGetKernel(cl_bundle.program, "gaussBlur"); // TODO
-    defer cl_kernel.release();
-
-    const cl_image = try clCreateBuffer(cl_bundle.context, image.data);
-    defer cl_image.release();
-
-    try setMemKernelArg(cl_kernel, 0, cl_image);
-    try setU32KernelArg(cl_kernel, 1, kernel_size);
-    try setU32KernelArg(cl_kernel, 2, @intCast(image.image_info.width));
-    try setU32KernelArg(cl_kernel, 3, @intCast(image.image_info.height));
-
-    const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
-    try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
-    const modified_data = try enqueueReadBuffer(a, cl_bundle.queue, cl_image, image.data.len);
-    defer a.free(modified_data);
-
-    const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
-        Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
-        else => unreachable,
-    };
-    defer new_image.deinit();
-
-    new_image.print() catch {}; // TODO: Replace with actual handling!
-}
-
-fn getFatalErrorValue(err: HandledError) u8 {
-    return switch (err) {
-        HandledError.Fatal => 1,
-        HandledError.FatalMessageFailed => 2,
     };
 }
 

@@ -17,4 +17,4 @@ Options:
   -t       Print runtime information.
   -f       Continues skipping the file if some error occures.
   -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd
-           positive value.
+           positive value, between 1 and 255 (inclusive).
