@@ -1,3 +1,31 @@
 # Párhuzamos eszközök programozása beadandó
 
 Egyszerű képmódosítási műveletekhez alkalmazható CLI program.
+
+```
+Performs basic image handling methods on netpbm images.
+Currently supports ASCII (P3) and binary (P6) .ppm files.
+
+Usage:
+  ppmfltrcl (blur | gauss | median | ...) FILE...
+
+Tools:
+  blur     Blurs the image using box blur.
+  sharpen  Applies a sharpness filter.
+  ridge    Performs basic ridge detection.
+  gauss    Blurs the image using gaussian blur.
+  unsharp  Performs unsharp masking on the image.
+  median   Perform median filtering on the image.
+
+Options:
+  -h       Shows this screen.
+  -v       Prints the programs version.
+  -i       Reads the contents from stdin instead of FILEs.
+  -o DIR   Specifies the output directory.
+  -t       Print runtime information.
+  -f       Continues skipping the file if some error occures.
+  -k <px>  The size of the pixel kernel [default: 3]. <px> must be an odd
+           positive value, between 1 and 255 (inclusive).
+```
+
+https://github.com/ziglang/zig/tree/0.14.0
