@@ -154,6 +154,8 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
         .Blur => "boxBlur",
         .Gauss => "gaussianBlur",
         .Unsharp => "unsharpMask",
+        .Ridge => "ridgeMask",
+        .Sharpen => "sharpenMask",
         .Median => "medianMethod",
         else => unreachable,
     };

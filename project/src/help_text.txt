@@ -6,8 +6,8 @@ Usage:
 
 Tools:
   blur     Blurs the image using box blur.
-  sharpen  Applies a sharpness filter (forces k=3).
-  edge     Performs basic edge detection (forces k=3).
+  sharpen  Applies a sharpness filter.
+  ridge    Performs basic ridge detection.
   gauss    Blurs the image using gaussian blur.
   unsharp  Performs unsharp masking on the image.
   median   Perform median filtering on the image.
@@ -19,5 +19,5 @@ Options:
   -o DIR   Specifies the output directory.
   -t       Print runtime information.
   -f       Continues skipping the file if some error occures.
-  -k <px>  The size of the pixel kernel [default: 5]. <px> must be an odd
+  -k <px>  The size of the pixel kernel [default: 3]. <px> must be an odd
            positive value, between 1 and 255 (inclusive).

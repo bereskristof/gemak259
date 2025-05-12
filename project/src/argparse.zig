@@ -17,6 +17,8 @@ pub const Tool = enum {
     Default,
     Help,
     Version,
+    Sharpen,
+    Ridge,
     Blur,
     Gauss,
     Unsharp,
@@ -52,7 +54,7 @@ pub const Properties = struct {
             .mem_source = null,
             .source = .{ .none = {} },
             .output_dir = allocator.alloc(u8, 2) catch return ArgError.AllocationError,
-            .kernel_size = 5,
+            .kernel_size = 3,
             .tool = .Default,
             .silent = false,
             .timed = false,
@@ -199,6 +201,10 @@ pub const Properties = struct {
                 self.setTool(.Median);
             } else if (std.mem.eql(u8, arg, "unsharp")) {
                 self.setTool(.Unsharp);
+            } else if (std.mem.eql(u8, arg, "ridge")) {
+                self.setTool(.Ridge);
+            } else if (std.mem.eql(u8, arg, "sharpen")) {
+                self.setTool(.Sharpen);
             } else {
                 return ArgError.UnknownArgument;
             }

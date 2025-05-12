@@ -49,6 +49,46 @@ double gaussian(double x, double y, double sigma) {
 //     dst[i + 2] = (uchar)((ulong)(new_color.z / n) % 256);
 // }
 
+__kernel void edgeMask(__global uchar *src, __global uchar *dst, uint width, uint height, double delta) {
+    uint x = get_global_id(0);
+    uint y = get_global_id(1);
+    uint i = (y * width + x) * ALIGNMENT;
+    if (x >= width || y >= height) {
+        return;
+    }
+
+    const int dk = (KERNEL_SIZE - 1) / 2;
+    double3 new_color = (double3)(0.0, 0.0, 0.0);
+    double2 offsets[4] = {(double2)(-dk, 0.0), (double2)(dk, 0.0), (double2)(0.0, -dk), (double2)(0.0, dk)};
+    double n = 0.0;
+    for (int i = 0; i < 4; i++) {
+        const double2 offset = offsets[i];
+        if (x + offset.x >= 0 && x + offset.x < width && y + offset.y >= 0 && y + offset.y < height) {
+            const uchar3 color = getColor(src, x + offset.x, y + offset.y, width);
+            new_color.x -= (double)(color.x);
+            new_color.y -= (double)(color.y);
+            new_color.z -= (double)(color.z);
+            n += 1.0;
+        }
+    }
+    const uchar3 color = getColor(src, x, y, width);
+    new_color.x += (double)(color.x) * (n + delta);
+    new_color.y += (double)(color.y) * (n + delta);
+    new_color.z += (double)(color.z) * (n + delta);
+
+    dst[i + 0] = (uchar)(clamp(new_color.x, 0.0, 255.0));
+    dst[i + 1] = (uchar)(clamp(new_color.y, 0.0, 255.0));
+    dst[i + 2] = (uchar)(clamp(new_color.z, 0.0, 255.0));
+}
+
+__kernel void sharpenMask(__global uchar *src, __global uchar *dst, uint width, uint height) {
+    edgeMask(src, dst, width, height, 1.0);
+}
+
+__kernel void ridgeMask(__global uchar *src, __global uchar *dst, uint width, uint height) {
+    edgeMask(src, dst, width, height, 0.0);
+}
+
 __kernel void boxBlur(__global uchar *src, __global uchar *dst, uint width, uint height) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
