@@ -2,7 +2,7 @@ Performs basic image handling methods on netpbm images.
 Currently supports ASCII (P3) and binary (P6) .ppm files.
 
 Usage:
-  {s} (blur | gauss | median) FILE...
+  {s} (blur | gauss | median | ...) FILE...
 
 Tools:
   blur     Blurs the image using box blur.

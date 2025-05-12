@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const name = "_c";
+const name = "ppmfltrcl";
 
 const BuildZon = struct {
-    name: enum { _c },
+    name: enum { ppmfltrcl },
     version: []const u8,
     fingerprint: u128,
     minimum_zig_version: []const u8,

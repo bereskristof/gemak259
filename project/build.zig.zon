@@ -1,7 +1,7 @@
 .{
-    .name = ._c,
+    .name = .ppmfltrcl,
     .version = "0.0.0",
-    .fingerprint = 0xa84163867e1292fa, // Changing this has security and trust implications.
+    .fingerprint = 0x6b0883272e9c3cdc, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.0",
     .paths = .{
         "build.zig",
