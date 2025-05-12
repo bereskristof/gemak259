@@ -97,6 +97,9 @@ fn readP3Header(header_size: *usize, file_data: []const u8) UnsupportedFileError
     const height = std.fmt.parseInt(u64, height_str, 10) catch return UnsupportedFileError.CorruptedHeaderData;
     const max_color_value = std.fmt.parseInt(u16, max_color_value_str, 10) catch return UnsupportedFileError.CorruptedHeaderData;
 
+    // Dirty fix to error on high bitrate images
+    if (max_color_value > 255) return UnsupportedFileError.Unsupported;
+
     return .{
         .size = width * height,
         .byte_size = 3 * (width * height) * (if (max_color_value >= 256) @as(usize, 2) else @as(usize, 1)),
