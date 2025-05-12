@@ -180,3 +180,49 @@ __kernel void unsharpMask(__global uchar *src, __global uchar *dst, uint width, 
     dst[i + 1] = (uchar)((ulong)(new_color.y / n) % 256);
     dst[i + 2] = (uchar)((ulong)(new_color.z / n) % 256);
 }
+
+#define MAX(a, b, c) ((a) > (b) ? ((a) > (c) ? (a) : (c)) : ((b) > (c) ? (b) : (c)))
+
+__kernel void medianMethod(__global uchar *src, __global uchar *dst, uint width, uint height) {
+    uint x = get_global_id(0);
+    uint y = get_global_id(1);
+    uint i = (y * width + x) * ALIGNMENT;
+    if (x >= width || y >= height) {
+        return;
+    }
+
+    const int dk = (KERNEL_SIZE - 1) / 2;
+    uchar3 colors[KERNEL_SIZE * KERNEL_SIZE];
+    int n = 0;
+    for (int dy = -dk; dy <= dk; dy++) {
+        for (int dx = -dk; dx <= dk; dx++) {
+            if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
+                const uchar3 color = getColor(src, x + dx, y + dy, width);
+                colors[n] = (uchar3)(color.x, color.y, color.z);
+                n += 1;
+            }
+        }
+    }
+
+    for (int c = 0; c < KERNEL_SIZE * KERNEL_SIZE; c++) {
+    }
+
+    for (int j = 0; j < n - 1; j++) {
+        uint min = j;
+        uchar minValue = MAX(colors[j].r, colors[j].g, colors[j].b);
+        for (int k = j + 1; k < n; k++) {
+            uchar value = MAX(colors[k].r, colors[k].g, colors[k].b);
+            if (value < minValue) {
+                minValue = value;
+                min = k;
+            }
+        }
+        uchar3 temp = colors[j];
+        colors[j] = colors[min];
+        colors[min] = temp;
+    }
+
+    dst[i + 0] = (uchar)(colors[n / 2].x);
+    dst[i + 1] = (uchar)(colors[n / 2].y);
+    dst[i + 2] = (uchar)(colors[n / 2].z);
+}
