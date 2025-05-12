@@ -6,6 +6,10 @@ uchar3 getColor(uchar *image, uint x, uint y, uint width) {
     return (uchar3)(image[i], image[i + 1], image[i + 2]);
 }
 
+double gaussian(double x, double y, double sigma) {
+    return exp(-(x * x + y * y) / (2 * sigma * sigma)) / (2 * M_PI * sigma * sigma);
+}
+
 __kernel void boxBlur(__global uchar *src, __global uchar *dst, uint k, uint width, uint height) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
@@ -31,4 +35,34 @@ __kernel void boxBlur(__global uchar *src, __global uchar *dst, uint k, uint wid
     dst[i + 0] = (uchar)((new_color.x / n) % 256);
     dst[i + 1] = (uchar)((new_color.y / n) % 256);
     dst[i + 2] = (uchar)((new_color.z / n) % 256);
+}
+
+__kernel void gaussianBlur(__global uchar *src, __global uchar *dst, uint k, uint width, uint height) {
+    uint x = get_global_id(0);
+    uint y = get_global_id(1);
+    uint i = (y * width + x) * ALIGNMENT;
+    if (x >= width || y >= height) {
+        return;
+    }
+
+    const double sigma = (double)(k) / 6.0;
+    const int dk = ((int)(k)-1) / 2;
+    double3 new_color = (double3)(0.0, 0.0, 0.0);
+    double n = 0.0;
+    for (int dy = -dk; dy <= dk; dy++) {
+        for (int dx = -dk; dx <= dk; dx++) {
+            if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
+                const uchar3 color = getColor(src, x + dx, y + dy, width);
+                const double weight = gaussian((double)(dx), (double)(dy), sigma);
+                new_color.x += (double)(color.x) * weight;
+                new_color.y += (double)(color.y) * weight;
+                new_color.z += (double)(color.z) * weight;
+                n += weight;
+            }
+        }
+    }
+
+    dst[i + 0] = (uchar)((ulong)(new_color.x / n) % 256);
+    dst[i + 1] = (uchar)((ulong)(new_color.y / n) % 256);
+    dst[i + 2] = (uchar)((ulong)(new_color.z / n) % 256);
 }
