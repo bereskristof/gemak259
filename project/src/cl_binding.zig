@@ -331,6 +331,30 @@ pub fn createImage(context: Context, mem_flags: u64, image_desc: ImageDesc, data
     };
 }
 
+/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateBuffer.html
+pub fn createBuffer(
+    context: Context,
+    mem_flags: u64,
+    data: []const u8,
+) !Mem {
+    var create_return: i32 = 0;
+    const buffer = Mem{
+        .this = cl.clCreateBuffer(
+            context.this,
+            mem_flags,
+            data.len,
+            @ptrCast(@constCast(data.ptr)),
+            &create_return,
+        ),
+    };
+    return switch (create_return) {
+        cl.CL_SUCCESS => buffer,
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        else => ClError.GenericError,
+    };
+}
+
 /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clSetKernelArg.html
 pub fn setMemKernelArg(self: Kernel, index: u32, arg_value: Mem) !void {
     const set_return: i32 = cl.clSetKernelArg(
@@ -398,5 +422,36 @@ pub fn enqueueNDRangeKernel(
             std.debug.print("CLERR: {d}\n", .{enqueue_return});
             return ClError.GenericError;
         },
+    };
+}
+
+pub fn enqueueReadBuffer(
+    a: std.mem.Allocator,
+    queue: CommandQueue,
+    buffer: Mem,
+    size: usize,
+    blocking_read: bool,
+) ![]const u8 {
+    const data = a.alloc(u8, size) catch return ClError.OutOfMemory;
+    errdefer a.free(data);
+    const enqueue_return: i32 = cl.clEnqueueReadBuffer(
+        queue.this,
+        buffer.this,
+        if (blocking_read) cl.CL_TRUE else cl.CL_FALSE,
+        0,
+        size,
+        @ptrCast(data.ptr),
+        0,
+        null,
+        null,
+    );
+    return switch (enqueue_return) {
+        cl.CL_SUCCESS => data,
+        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
+        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
+        cl.CL_INVALID_COMMAND_QUEUE => ClError.InvalidCommandQueue,
+        cl.CL_INVALID_MEM_OBJECT => ClError.InvalidValue,
+        cl.CL_INVALID_VALUE => ClError.InvalidValue,
+        else => unreachable,
     };
 }

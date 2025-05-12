@@ -2,13 +2,14 @@ const std = @import("std");
 
 const This = @This();
 
-const UnsupportedFileError = error{
+pub const UnsupportedFileError = error{
     Unsupported,
     WrongMagicNumber,
     CorruptedHeaderData,
     OutOfMemory,
     UnreadableString,
     DamagedData,
+    NewDataSizeMismatch,
 };
 
 const BitWidth = enum(u2) {
@@ -106,6 +107,17 @@ fn readP3Header(header_size: *usize, file_data: []const u8) UnsupportedFileError
     };
 }
 
+pub fn cloneWithData(self: This, new_data: []const u8) !This {
+    if (self.data.len != new_data.len) return UnsupportedFileError.NewDataSizeMismatch;
+    const clone_data: []u8 = self.alloc.alloc(u8, new_data.len) catch return UnsupportedFileError.OutOfMemory;
+    std.mem.copyForwards(u8, clone_data, new_data);
+    return This{
+        .image_info = self.image_info,
+        .alloc = self.alloc,
+        .data = clone_data,
+    };
+}
+
 pub fn print(self: This) !void {
     const stderr = std.io.getStdErr();
     const out = stderr.writer();
@@ -119,7 +131,7 @@ pub fn print(self: This) !void {
     }
 }
 
-pub fn deinit(self: *This) void {
+pub fn deinit(self: This) void {
     self.alloc.free(self.data);
 }
 

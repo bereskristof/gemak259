@@ -166,6 +166,14 @@ fn clCreateImage(context: cl.Context, data: []const u8, width: u64, height: u64)
     };
 }
 
+fn clCreateBuffer(context: cl.Context, data: []const u8) HandledError!cl.Mem {
+    return cl.createBuffer(context, cl.mem_read_write | cl.mem_copy_host_ptr, data) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        else => return printAndReturnError("Error: Failed to create OpenCL buffer!\n"),
+    };
+}
+
 fn getRunConfig(a: std.mem.Allocator) HandledError!args.Properties {
     return args.Properties.init(a) catch |err| switch (err) {
         args.ArgError.ConflictingInputs => return printAndReturnError("Error: '-i' and 'FILE...' are mutually exclusive!\n"),
@@ -199,6 +207,16 @@ fn enqueueNDRangeKernel(queue: cl.CommandQueue, kernel: cl.Kernel, global_work_s
         cl.ClError.InvalidKernel => return printAndReturnError("Error: OpenCL kernel is invalid!\n"),
         cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL work group or item is invalid!\n"),
         else => return printAndReturnError("Error: Failed to enqueue OpenCL kernel!\n"),
+    };
+}
+
+fn enqueueReadBuffer(a: std.mem.Allocator, queue: cl.CommandQueue, buffer: cl.Mem, size: usize) HandledError![]const u8 {
+    return cl.enqueueReadBuffer(a, queue, buffer, size, true) catch |err| switch (err) {
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
+        cl.ClError.InvalidCommandQueue => return printAndReturnError("Error: OpenCL command queue is invalid!\n"),
+        cl.ClError.InvalidValue => return printAndReturnError("Error: OpenCL memory object or value is invalid!\n"),
+        else => return printAndReturnError("Error: Failed to enqueue OpenCL read buffer!\n"),
     };
 }
 
@@ -264,22 +282,33 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
         error.OutOfMemory => return printAndReturnError("Error: Memory allocation failed!\n"),
         error.UnreadableString => return printAndReturnError("Error: File data portion is corrupted!\n"),
         error.DamagedData => return printAndReturnError("Error: File data portion is corrupted!\n"),
+        else => unreachable,
     };
     defer image.deinit();
 
     const cl_kernel = try clGetKernel(cl_bundle.program, "gaussBlur"); // TODO
     defer cl_kernel.release();
 
-    const cl_image = try clCreateImage(cl_bundle.context, image.data, image.image_info.width, image.image_info.height);
+    const cl_image = try clCreateBuffer(cl_bundle.context, image.data);
     defer cl_image.release();
 
     try setMemKernelArg(cl_kernel, 0, cl_image);
     try setU32KernelArg(cl_kernel, 1, kernel_size);
+    try setU32KernelArg(cl_kernel, 2, @intCast(image.image_info.width));
+    try setU32KernelArg(cl_kernel, 3, @intCast(image.image_info.height));
 
     const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
     try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
+    const modified_data = try enqueueReadBuffer(a, cl_bundle.queue, cl_image, image.data.len);
+    defer a.free(modified_data);
 
-    image.print() catch {}; // TODO: Replace with actual handling!
+    const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
+        Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
+        else => unreachable,
+    };
+    defer new_image.deinit();
+
+    new_image.print() catch {}; // TODO: Replace with actual handling!
 }
 
 fn getFatalErrorValue(err: HandledError) u8 {
