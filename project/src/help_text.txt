@@ -5,9 +5,12 @@ Usage:
   {s} (blur | gauss | median) FILE...
 
 Tools:
-  blur    Blurs the image using box blur.
-  gauss   Blurs the image using gaussian blur.
-  median  Perform median filtering on the image.
+  blur     Blurs the image using box blur.
+  sharpen  Applies a sharpness filter (forces k=3).
+  edge     Performs basic edge detection (forces k=3).
+  gauss    Blurs the image using gaussian blur.
+  unsharp  Performs unsharp masking on the image.
+  median   Perform median filtering on the image.
 
 Options:
   -h       Shows this screen.

@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cl = @cImport({
-    // @cInclude("../include/pragma.h");
     @cInclude("../include/CL/opencl.h");
 });
 
@@ -202,12 +201,16 @@ pub const Program = extern struct {
     }
 
     /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clBuildProgram.html
-    pub fn build(self: *Program, device: DeviceId) !void {
+    pub fn build(self: *Program, device: DeviceId, kernel_size: usize) !void {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        const a = gpa.allocator();
+        const line = try std.fmt.allocPrint(a, "-w -cl-std=CL3.0 -D KERNEL_SIZE={d}\x00", .{kernel_size});
+        defer a.free(line);
         const build_return: i32 = cl.clBuildProgram(
             self.this,
             1,
             &device.this,
-            "-w -cl-std=CL3.0",
+            line.ptr,
             null,
             null,
         );
@@ -216,6 +219,7 @@ pub const Program = extern struct {
             cl.CL_BUILD_PROGRAM_FAILURE => {
                 const stderr = std.io.getStdErr().writer();
                 stderr.print("OpenCL compile error!\n", .{}) catch {}; // TODO: Query the problem
+                printProgramBuildInfo(self.*, device);
                 return ClError.GenericError;
             },
             cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
@@ -227,6 +231,44 @@ pub const Program = extern struct {
         };
     }
 };
+
+fn printProgramBuildInfo(
+    program: Program,
+    device: DeviceId,
+) void {
+    var build_log_size: usize = 0;
+    const build_return: i32 = cl.clGetProgramBuildInfo(
+        program.this,
+        device.this,
+        cl.CL_PROGRAM_BUILD_LOG,
+        0,
+        null,
+        &build_log_size,
+    );
+    switch (build_return) {
+        cl.CL_SUCCESS => {},
+        else => return,
+    }
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const a = gpa.allocator();
+    const build_log = a.alloc(u8, build_log_size) catch return;
+    defer a.free(build_log);
+    const get_return: i32 = cl.clGetProgramBuildInfo(
+        program.this,
+        device.this,
+        cl.CL_PROGRAM_BUILD_LOG,
+        build_log_size,
+        @ptrCast(build_log.ptr),
+        null,
+    );
+    switch (get_return) {
+        cl.CL_SUCCESS => {},
+        else => return,
+    }
+    const stderr = std.io.getStdErr().writer();
+    stderr.print("OpenCL build log:\n", .{}) catch {};
+    stderr.print("{s}\n", .{build_log}) catch {};
+}
 
 /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateProgramWithSource.html
 pub fn createProgramWithSource(context: Context, source: []const u8) !Program {
@@ -278,21 +320,6 @@ pub fn createKernel(program: Program, kernel_name: [:0]const u8) !Kernel {
     };
 }
 
-pub const ImageDesc = struct {
-    this: cl.cl_image_desc = .{
-        .image_type = cl.CL_MEM_OBJECT_IMAGE2D,
-        .image_width = 20,
-        .image_height = 20,
-        .image_depth = 1,
-        .image_array_size = 1,
-        .image_row_pitch = 0,
-        .image_slice_pitch = 0,
-        .num_mip_levels = 0,
-        .num_samples = 0,
-        .unnamed_0 = .{ .mem_object = null },
-    },
-};
-
 pub const Mem = extern struct {
     this: cl.cl_mem,
 
@@ -302,34 +329,6 @@ pub const Mem = extern struct {
         }
     }
 };
-
-/// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateImageWithProperties.html
-pub fn createImage(context: Context, mem_flags: u64, image_desc: ImageDesc, data: []const u8) !Mem {
-    var create_return: i32 = 0;
-    const image = Mem{
-        .this = cl.clCreateImage(
-            context.this,
-            mem_flags,
-            &cl.cl_image_format{
-                .image_channel_order = cl.CL_RGB,
-                .image_channel_data_type = cl.CL_UNORM_INT8,
-            },
-            &image_desc.this,
-            @ptrCast(@constCast(data.ptr)),
-            &create_return,
-        ),
-    };
-    return switch (create_return) {
-        cl.CL_SUCCESS => image,
-        cl.CL_OUT_OF_RESOURCES => ClError.OutOfResources,
-        cl.CL_OUT_OF_HOST_MEMORY => ClError.OutOfMemory,
-        else => {
-            std.debug.print("CLERR: {d}\n", .{create_return});
-            return ClError.GenericError;
-        },
-        // else => unreachable,
-    };
-}
 
 /// https://registry.khronos.org/OpenCL/sdk/3.0/docs/man/html/clCreateBuffer.html
 pub fn createBuffer(
@@ -396,8 +395,7 @@ pub fn enqueueNDRangeKernel(
     global_work_size: []const u64,
 ) !void {
     const calculated_global_work_size: [2]usize = [_]usize{ nextPowerOfTwo(global_work_size[0]), nextPowerOfTwo(global_work_size[1]) };
-    std.log.debug("{} {}\n", .{ calculated_global_work_size[0], calculated_global_work_size[1] });
-    const local_work_size: [2]usize = [_]usize{ 32, 32 }; // TODO: Replace with system based value
+    const local_work_size: [2]usize = [_]usize{ 16, 16 }; // TODO: Replace with system based value
     const enqueue_return: i32 = cl.clEnqueueNDRangeKernel(
         queue.this,
         kernel.this,
@@ -418,10 +416,7 @@ pub fn enqueueNDRangeKernel(
         cl.CL_INVALID_WORK_GROUP_SIZE => ClError.InvalidValue,
         cl.CL_INVALID_WORK_ITEM_SIZE => ClError.InvalidValue,
         cl.CL_INVALID_VALUE => ClError.InvalidValue,
-        else => {
-            std.debug.print("CLERR: {d}\n", .{enqueue_return});
-            return ClError.GenericError;
-        },
+        else => unreachable,
     };
 }
 

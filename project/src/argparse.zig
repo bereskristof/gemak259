@@ -19,6 +19,7 @@ pub const Tool = enum {
     Version,
     Blur,
     Gauss,
+    Unsharp,
     Median,
 };
 
@@ -196,6 +197,8 @@ pub const Properties = struct {
                 self.setTool(.Gauss);
             } else if (std.mem.eql(u8, arg, "median")) {
                 self.setTool(.Median);
+            } else if (std.mem.eql(u8, arg, "unsharp")) {
+                self.setTool(.Unsharp);
             } else {
                 return ArgError.UnknownArgument;
             }

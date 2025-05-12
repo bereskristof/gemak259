@@ -46,7 +46,24 @@ pub fn main() u8 {
     return exit_success;
 }
 
-fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
+fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
+    var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
+    const cl_bundle = try clInit(a, properties.kernel_size);
+    defer clFree(cl_bundle);
+    if (cl_init_timer) |*timer| {
+        const runtime = timer.read();
+        const stderr = std.io.getStdErr().writer();
+        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+    }
+
+    return switch (properties.source) {
+        .files => handleFiles(a, properties, cl_bundle),
+        .stdin => handleStdin(a, properties, cl_bundle),
+        .none => printAndReturnError("Error: No source files provided!\n"),
+    };
+}
+
+fn clInit(a: std.mem.Allocator, kernel_size: usize) HandledError!ClBundle {
     const platforms = try clGetPlatforms(a);
     defer a.free(platforms);
     const platform = platforms[0];
@@ -63,7 +80,7 @@ fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
 
     var program = try clGetProgram(context);
     errdefer program.release();
-    program.build(device) catch |err| switch (err) {
+    program.build(device, kernel_size) catch |err| switch (err) {
         cl.ClError.PlatformNotFound => return printAndReturnError("Error: OpenCL platform not found!\n"),
         cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
         else => return printAndReturnError("Error: OpenCL failed to build!\n"),
@@ -78,21 +95,10 @@ fn clInit(a: std.mem.Allocator) HandledError!ClBundle {
     };
 }
 
-fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
-    var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
-    const cl_bundle = try clInit(a);
-    defer clFree(a, cl_bundle);
-    if (cl_init_timer) |*timer| {
-        const runtime = timer.read();
-        const stderr = std.io.getStdErr().writer();
-        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
-    }
-
-    return switch (properties.source) {
-        .files => handleFiles(a, properties, cl_bundle),
-        .stdin => handleStdin(a, properties, cl_bundle),
-        .none => printAndReturnError("Error: No source files provided!\n"),
-    };
+fn clFree(cl_bundle: ClBundle) void {
+    cl_bundle.device.release();
+    cl_bundle.context.release();
+    cl_bundle.program.release();
 }
 
 fn handleStdin(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
@@ -147,11 +153,13 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
     const kernel_name = switch (properties.tool) {
         .Blur => "boxBlur",
         .Gauss => "gaussianBlur",
+        .Unsharp => "unsharpMask",
         .Median => "medianMethod",
         else => unreachable,
     };
 
-    const cl_kernel = try clGetKernel(cl_bundle.program, kernel_name); // TODO
+    var cl_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
+    const cl_kernel = try clGetKernel(cl_bundle.program, kernel_name);
     defer cl_kernel.release();
 
     const cl_image = try clCreateBuffer(cl_bundle.context, image.data);
@@ -162,14 +170,18 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
 
     try setMemKernelArg(cl_kernel, 0, cl_image);
     try setMemKernelArg(cl_kernel, 1, cl_target);
-    try setU32KernelArg(cl_kernel, 2, properties.kernel_size);
-    try setU32KernelArg(cl_kernel, 3, @intCast(image.image_info.width));
-    try setU32KernelArg(cl_kernel, 4, @intCast(image.image_info.height));
+    try setU32KernelArg(cl_kernel, 2, @intCast(image.image_info.width));
+    try setU32KernelArg(cl_kernel, 3, @intCast(image.image_info.height));
 
     const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
     try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
     const modified_data = try enqueueReadBuffer(a, cl_bundle.queue, cl_target, image.data.len);
     defer a.free(modified_data);
+    if (cl_timer) |*timer| {
+        const runtime = timer.read();
+        const stderr = std.io.getStdErr().writer();
+        stderr.print("Cl item runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+    }
 
     const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
         Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
@@ -197,13 +209,6 @@ fn getFatalErrorValue(err: HandledError) u8 {
         HandledError.Fatal => 1,
         HandledError.FatalMessageFailed => 2,
     };
-}
-
-fn clFree(a: std.mem.Allocator, cl_bundle: ClBundle) void {
-    _ = a; // TODO
-    cl_bundle.device.release();
-    cl_bundle.context.release();
-    cl_bundle.program.release();
 }
 
 fn clGetPlatforms(a: std.mem.Allocator) HandledError![]const cl.PlatformId {
@@ -309,7 +314,7 @@ fn setU32KernelArg(kernel: cl.Kernel, index: u32, value: u32) HandledError!void 
 
 fn enqueueNDRangeKernel(queue: cl.CommandQueue, kernel: cl.Kernel, global_work_size: []const u64) HandledError!void {
     return cl.enqueueNDRangeKernel(queue, kernel, global_work_size) catch |err| switch (err) {
-        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources!\n"),
+        cl.ClError.OutOfResources => return printAndReturnError("Error: OpenCL out of resources (when ran)!\n"),
         cl.ClError.OutOfMemory => return printAndReturnError("Error: OpenCL out of memory!\n"),
         cl.ClError.InvalidCommandQueue => return printAndReturnError("Error: OpenCL command queue is invalid!\n"),
         cl.ClError.InvalidKernel => return printAndReturnError("Error: OpenCL kernel is invalid!\n"),
