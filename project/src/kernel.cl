@@ -4,15 +4,19 @@
 #endif
 
 // We use `uchar *image` instead of `uchar3 *image` due to `uchar3` being aligned to 4 bytes
-const uint ALIGNMENT = 3;
+__constant uint ALIGNMENT = 3;
 
-uchar3 getColor(uchar *image, uint x, uint y, uint width) {
+uchar3 getColor(__global uchar *image, uint x, uint y, uint width) {
     uint i = (y * width + x) * ALIGNMENT;
     return (uchar3)(image[i], image[i + 1], image[i + 2]);
 }
 
-double gaussian(double x, double y, double sigma) {
+float gaussian(float x, float y, float sigma) {
     return exp(-(x * x + y * y) / (2 * sigma * sigma)) / (2 * M_PI * sigma * sigma);
+}
+
+float clampf(float value, float min, float max) {
+    return fmax(fmin(value, max), min);
 }
 
 // Unused due to noticeable performance drop (Gauss k=91 -> 2.1s vs 3.3s)
@@ -20,7 +24,7 @@ double gaussian(double x, double y, double sigma) {
 //                        __global uchar *dst,
 //                        uint width,
 //                        uint height,
-//                        double convolution[KERNEL_SIZE * KERNEL_SIZE]) {
+//                        float convolution[KERNEL_SIZE * KERNEL_SIZE]) {
 //     uint x = get_global_id(0);
 //     uint y = get_global_id(1);
 //     uint i = (y * width + x) * ALIGNMENT;
@@ -29,16 +33,16 @@ double gaussian(double x, double y, double sigma) {
 //     }
 
 //     const int dk = (KERNEL_SIZE - 1) / 2;
-//     double3 new_color = (double3)(0.0, 0.0, 0.0);
-//     double n = 0.0;
+//     float3 new_color = (float3)(0, 0, 0);
+//     float n = 0;
 //     for (int dy = -dk; dy <= dk; dy++) {
 //         for (int dx = -dk; dx <= dk; dx++) {
 //             if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
 //                 const uchar3 color = getColor(src, x + dx, y + dy, width);
-//                 const double weight = convolution[((dy + dk) * KERNEL_SIZE) + (dx + dk)];
-//                 new_color.x += (double)(color.x) * weight;
-//                 new_color.y += (double)(color.y) * weight;
-//                 new_color.z += (double)(color.z) * weight;
+//                 const float weight = convolution[((dy + dk) * KERNEL_SIZE) + (dx + dk)];
+//                 new_color.x += (float)(color.x) * weight;
+//                 new_color.y += (float)(color.y) * weight;
+//                 new_color.z += (float)(color.z) * weight;
 //                 n += weight;
 //             }
 //         }
@@ -49,7 +53,7 @@ double gaussian(double x, double y, double sigma) {
 //     dst[i + 2] = (uchar)((ulong)(new_color.z / n) % 256);
 // }
 
-__kernel void edgeMask(__global uchar *src, __global uchar *dst, uint width, uint height, double delta) {
+__kernel void edgeMask(__global uchar *src, __global uchar *dst, uint width, uint height, float delta) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
     uint i = (y * width + x) * ALIGNMENT;
@@ -58,35 +62,35 @@ __kernel void edgeMask(__global uchar *src, __global uchar *dst, uint width, uin
     }
 
     const int dk = (KERNEL_SIZE - 1) / 2;
-    double3 new_color = (double3)(0.0, 0.0, 0.0);
-    double2 offsets[4] = {(double2)(-dk, 0.0), (double2)(dk, 0.0), (double2)(0.0, -dk), (double2)(0.0, dk)};
-    double n = 0.0;
+    float3 new_color = (float3)(0, 0, 0);
+    float2 offsets[4] = {(float2)(-dk, 0), (float2)(dk, 0), (float2)(0, -dk), (float2)(0, dk)};
+    float n = 0;
     for (int i = 0; i < 4; i++) {
-        const double2 offset = offsets[i];
+        const float2 offset = offsets[i];
         if (x + offset.x >= 0 && x + offset.x < width && y + offset.y >= 0 && y + offset.y < height) {
             const uchar3 color = getColor(src, x + offset.x, y + offset.y, width);
-            new_color.x -= (double)(color.x);
-            new_color.y -= (double)(color.y);
-            new_color.z -= (double)(color.z);
-            n += 1.0;
+            new_color.x -= (float)(color.x);
+            new_color.y -= (float)(color.y);
+            new_color.z -= (float)(color.z);
+            n += 1;
         }
     }
     const uchar3 color = getColor(src, x, y, width);
-    new_color.x += (double)(color.x) * (n + delta);
-    new_color.y += (double)(color.y) * (n + delta);
-    new_color.z += (double)(color.z) * (n + delta);
+    new_color.x += (float)(color.x) * (n + delta);
+    new_color.y += (float)(color.y) * (n + delta);
+    new_color.z += (float)(color.z) * (n + delta);
 
-    dst[i + 0] = (uchar)(clamp(new_color.x, 0.0, 255.0));
-    dst[i + 1] = (uchar)(clamp(new_color.y, 0.0, 255.0));
-    dst[i + 2] = (uchar)(clamp(new_color.z, 0.0, 255.0));
+    dst[i + 0] = (uchar)(clampf(new_color.x, 0, 255));
+    dst[i + 1] = (uchar)(clampf(new_color.y, 0, 255));
+    dst[i + 2] = (uchar)(clampf(new_color.z, 0, 255));
 }
 
 __kernel void sharpenMask(__global uchar *src, __global uchar *dst, uint width, uint height) {
-    edgeMask(src, dst, width, height, 1.0);
+    edgeMask(src, dst, width, height, 1);
 }
 
 __kernel void ridgeMask(__global uchar *src, __global uchar *dst, uint width, uint height) {
-    edgeMask(src, dst, width, height, 0.0);
+    edgeMask(src, dst, width, height, 0);
 }
 
 __kernel void boxBlur(__global uchar *src, __global uchar *dst, uint width, uint height) {
@@ -124,18 +128,18 @@ __kernel void gaussianBlur(__global uchar *src, __global uchar *dst, uint width,
         return;
     }
 
-    const double sigma = (double)(KERNEL_SIZE) / 6.0;
+    const float sigma = (float)(KERNEL_SIZE) / 6;
     const int dk = (KERNEL_SIZE - 1) / 2;
-    double3 new_color = (double3)(0.0, 0.0, 0.0);
-    double n = 0.0;
+    float3 new_color = (float3)(0, 0, 0);
+    float n = 0;
     for (int dy = -dk; dy <= dk; dy++) {
         for (int dx = -dk; dx <= dk; dx++) {
             if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
                 const uchar3 color = getColor(src, x + dx, y + dy, width);
-                const double weight = gaussian((double)(dx), (double)(dy), sigma);
-                new_color.x += (double)(color.x) * weight;
-                new_color.y += (double)(color.y) * weight;
-                new_color.z += (double)(color.z) * weight;
+                const float weight = gaussian((float)(dx), (float)(dy), sigma);
+                new_color.x += (float)(color.x) * weight;
+                new_color.y += (float)(color.y) * weight;
+                new_color.z += (float)(color.z) * weight;
                 n += weight;
             }
         }
@@ -154,27 +158,27 @@ __kernel void unsharpMask(__global uchar *src, __global uchar *dst, uint width, 
         return;
     }
 
-    const double sigma = (double)(KERNEL_SIZE) / 6.0;
+    const float sigma = (float)(KERNEL_SIZE) / 6;
     const int dk = (KERNEL_SIZE - 1) / 2;
-    double3 new_color = (double3)(0.0, 0.0, 0.0);
-    double n = 0.0;
+    float3 new_color = (float3)(0, 0, 0);
+    float n = 0;
     for (int dy = -dk; dy <= dk; dy++) {
         for (int dx = -dk; dx <= dk; dx++) {
             if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
                 const uchar3 color = getColor(src, x + dx, y + dy, width);
-                const double weight = gaussian((double)(dx), (double)(dy), sigma);
-                new_color.x += (double)(color.x) * weight;
-                new_color.y += (double)(color.y) * weight;
-                new_color.z += (double)(color.z) * weight;
+                const float weight = gaussian((float)(dx), (float)(dy), sigma);
+                new_color.x += (float)(color.x) * weight;
+                new_color.y += (float)(color.y) * weight;
+                new_color.z += (float)(color.z) * weight;
                 n += weight;
             }
         }
     }
     const uchar3 color = getColor(src, x, y, width);
-    new_color.x += (double)(color.x) * 2.0;
-    new_color.y += (double)(color.y) * 2.0;
-    new_color.z += (double)(color.z) * 2.0;
-    n += 2.0;
+    new_color.x += (float)(color.x) * 2;
+    new_color.y += (float)(color.y) * 2;
+    new_color.z += (float)(color.z) * 2;
+    n += 2;
 
     dst[i + 0] = (uchar)((ulong)(new_color.x / n) % 256);
     dst[i + 1] = (uchar)((ulong)(new_color.y / n) % 256);
@@ -209,9 +213,9 @@ __kernel void medianMethod(__global uchar *src, __global uchar *dst, uint width,
 
     for (int j = 0; j < n - 1; j++) {
         uint min = j;
-        uchar minValue = MAX(colors[j].r, colors[j].g, colors[j].b);
+        uchar minValue = MAX(colors[j].x, colors[j].y, colors[j].z);
         for (int k = j + 1; k < n; k++) {
-            uchar value = MAX(colors[k].r, colors[k].g, colors[k].b);
+            uchar value = MAX(colors[k].x, colors[k].y, colors[k].z);
             if (value < minValue) {
                 minValue = value;
                 min = k;
