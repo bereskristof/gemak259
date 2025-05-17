@@ -1,6 +1,7 @@
 const std = @import("std");
 const cl = @import("cl_binding.zig");
 const args = @import("argparse.zig");
+const cpu = @import("cpu_gauss.zig");
 const build_config = @import("build_config");
 
 const Image = @import("netpbm.zig");
@@ -150,6 +151,37 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
     };
     defer image.deinit();
 
+    // TODO: Calcs
+    var modified_data: []const u8 = undefined;
+    if (properties.tool != .GaussSoftware) {
+        modified_data = try calculateGpu(a, image, cl_bundle, properties);
+    } else {
+        modified_data = try calculateCpu(a, image, properties);
+    }
+    defer a.free(modified_data);
+
+    const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
+        Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
+        else => unreachable,
+    };
+    defer new_image.deinit();
+
+    const out_file_name = std.fmt.allocPrint(a, "{s}/{d}.ppm", .{ properties.output_dir, num }) catch
+        return printAndReturnError("Error: Could not create output file name!\n");
+    defer a.free(out_file_name);
+    std.fs.cwd().makePath(properties.output_dir) catch return printAndReturnError("Error: Could not create target directory!\n");
+    const out_file = std.fs.cwd().createFile(out_file_name, .{}) catch |err| switch (err) {
+        error.AccessDenied => return printAndReturnError("Error: Access to file is denied!\n"),
+        else => return printAndReturnError("Error: Unknown file access error!\n"),
+    };
+    defer out_file.close();
+    new_image.exportToFile(out_file) catch |err| switch (err) {
+        Image.UnsupportedFileError.DamagedData => return printAndReturnError("Error: Could not export data to file!\n"),
+        else => unreachable,
+    };
+}
+
+fn calculateGpu(a: std.mem.Allocator, image: Image, cl_bundle: ClBundle, properties: args.Properties) HandledError![]const u8 {
     const kernel_name = switch (properties.tool) {
         .Blur => "boxBlur",
         .Gauss => "gaussianBlur",
@@ -178,32 +210,25 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
     const global_work_size = [_]u64{ image.image_info.width, image.image_info.height };
     try enqueueNDRangeKernel(cl_bundle.queue, cl_kernel, &global_work_size);
     const modified_data = try enqueueReadBuffer(a, cl_bundle.queue, cl_target, image.data.len);
-    defer a.free(modified_data);
     if (cl_timer) |*timer| {
         const runtime = timer.read();
         const stderr = std.io.getStdErr().writer();
-        stderr.print("Cl item runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+        stderr.print("Cl item runtime: {d} us\n", .{runtime / std.time.ns_per_us}) catch {};
     }
 
-    const new_image = image.cloneWithData(modified_data) catch |err| switch (err) {
-        Image.UnsupportedFileError.NewDataSizeMismatch => return printAndReturnError("Error: Target size is not equal to source size!\n"),
-        else => unreachable,
-    };
-    defer new_image.deinit();
+    return modified_data;
+}
 
-    const out_file_name = std.fmt.allocPrint(a, "{s}/{d}.ppm", .{ properties.output_dir, num }) catch
-        return printAndReturnError("Error: Could not create output file name!\n");
-    defer a.free(out_file_name);
-    std.fs.cwd().makePath(properties.output_dir) catch return printAndReturnError("Error: Could not create target directory!\n");
-    const out_file = std.fs.cwd().createFile(out_file_name, .{}) catch |err| switch (err) {
-        error.AccessDenied => return printAndReturnError("Error: Access to file is denied!\n"),
-        else => return printAndReturnError("Error: Unknown file access error!\n"),
-    };
-    defer out_file.close();
-    new_image.exportToFile(out_file) catch |err| switch (err) {
-        Image.UnsupportedFileError.DamagedData => return printAndReturnError("Error: Could not export data to file!\n"),
-        else => unreachable,
-    };
+pub fn calculateCpu(a: std.mem.Allocator, image: Image, properties: args.Properties) HandledError![]const u8 {
+    var cl_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
+    const modified_data = cpu.gaussianBlur(a, image.data, image.image_info.width, image.image_info.height, properties.kernel_size) catch return printAndReturnError("Error: Allocation failed!\n");
+    if (cl_timer) |*timer| {
+        const runtime = timer.read();
+        const stderr = std.io.getStdErr().writer();
+        stderr.print("Cl item runtime: {d} us\n", .{runtime / std.time.ns_per_us}) catch {};
+    }
+
+    return modified_data;
 }
 
 fn getFatalErrorValue(err: HandledError) u8 {

@@ -21,6 +21,7 @@ pub const Tool = enum {
     Ridge,
     Blur,
     Gauss,
+    GaussSoftware,
     Unsharp,
     Median,
 };
@@ -205,6 +206,8 @@ pub const Properties = struct {
                 self.setTool(.Ridge);
             } else if (std.mem.eql(u8, arg, "sharpen")) {
                 self.setTool(.Sharpen);
+            } else if (std.mem.eql(u8, arg, "gauss-cpu")) {
+                self.setTool(.GaussSoftware);
             } else {
                 return ArgError.UnknownArgument;
             }
