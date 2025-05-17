@@ -41,7 +41,7 @@ pub fn main() u8 {
     }
     if (complete_timer) |*timer| {
         const runtime = timer.read();
-        stderr.print("Complete runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+        stderr.print("Complete runtime: {d} us\n", .{runtime / std.time.ns_per_us}) catch {};
     }
 
     return exit_success;
@@ -49,12 +49,15 @@ pub fn main() u8 {
 
 fn handleInputs(a: std.mem.Allocator, properties: args.Properties) HandledError!void {
     var cl_init_timer: ?std.time.Timer = if (properties.timed) std.time.Timer.start() catch null else null;
-    const cl_bundle = try clInit(a, properties.kernel_size);
+    var cl_bundle: ?ClBundle = null;
+    if (properties.tool != .GaussSoftware) {
+        cl_bundle = try clInit(a, properties.kernel_size);
+    }
     defer clFree(cl_bundle);
     if (cl_init_timer) |*timer| {
         const runtime = timer.read();
         const stderr = std.io.getStdErr().writer();
-        stderr.print("Cl setup runtime: {d} ms\n", .{runtime / std.time.ns_per_ms}) catch {};
+        stderr.print("Cl setup runtime: {d} us\n", .{runtime / std.time.ns_per_us}) catch {};
     }
 
     return switch (properties.source) {
@@ -96,13 +99,14 @@ fn clInit(a: std.mem.Allocator, kernel_size: usize) HandledError!ClBundle {
     };
 }
 
-fn clFree(cl_bundle: ClBundle) void {
-    cl_bundle.device.release();
-    cl_bundle.context.release();
-    cl_bundle.program.release();
+fn clFree(cl_bundle: ?ClBundle) void {
+    if (cl_bundle == null) return;
+    cl_bundle.?.device.release();
+    cl_bundle.?.context.release();
+    cl_bundle.?.program.release();
 }
 
-fn handleStdin(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
+fn handleStdin(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ?ClBundle) HandledError!void {
     const stdin = std.io.getStdIn().reader();
     const data = stdin.readAllAlloc(a, 1 << 30) catch |err| switch (err) {
         error.StreamTooLong => return printAndReturnError("Error: File exceeds maximum file size (1 GiB)\n"),
@@ -114,14 +118,14 @@ fn handleStdin(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClB
     handleData(a, data, cl_bundle, properties, 0) catch |err| if (!properties.silent) return err;
 }
 
-fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ClBundle) HandledError!void {
+fn handleFiles(a: std.mem.Allocator, properties: args.Properties, cl_bundle: ?ClBundle) HandledError!void {
     var i: usize = 0;
     while (properties.getFile(i)) |file_name| : (i += 1) {
         handleFile(a, file_name, cl_bundle, properties, i) catch |err| if (!properties.silent) return err;
     }
 }
 
-fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle, properties: args.Properties, num: usize) HandledError!void {
+fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ?ClBundle, properties: args.Properties, num: usize) HandledError!void {
     const cwd = std.fs.cwd();
     const file = cwd.openFile(file_name, .{}) catch |err| switch (err) {
         error.FileNotFound => return printAndReturnError("Error: File not found!\n"),
@@ -139,7 +143,7 @@ fn handleFile(a: std.mem.Allocator, file_name: []const u8, cl_bundle: ClBundle, 
     try handleData(a, file_data, cl_bundle, properties, num);
 }
 
-fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, properties: args.Properties, num: usize) HandledError!void {
+fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ?ClBundle, properties: args.Properties, num: usize) HandledError!void {
     var image = Image.init(a, file_data) catch |err| switch (err) {
         error.Unsupported => return printAndReturnError("Error: NetPBM type is not supported!\n"),
         error.WrongMagicNumber => return printAndReturnError("Error: File type is not supported!\n"),
@@ -154,7 +158,8 @@ fn handleData(a: std.mem.Allocator, file_data: []const u8, cl_bundle: ClBundle, 
     // TODO: Calcs
     var modified_data: []const u8 = undefined;
     if (properties.tool != .GaussSoftware) {
-        modified_data = try calculateGpu(a, image, cl_bundle, properties);
+        if (cl_bundle == null) return printAndReturnError("Error: Cl bundle is not allowed to be null!\n");
+        modified_data = try calculateGpu(a, image, cl_bundle.?, properties);
     } else {
         modified_data = try calculateCpu(a, image, properties);
     }
